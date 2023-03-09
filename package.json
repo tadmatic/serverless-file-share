@@ -1,0 +1,49 @@
+{
+  "name": "aws-cdk-cron-boilerplate",
+  "version": "0.1.0",
+  "bin": {
+    "app": "bin/app.js"
+  },
+  "scripts": {
+    "test": "jest",
+    "build": "dotenv -e .env cdk synth --profile ${npm_package_config_awsProfile}",
+    "build:prod": "dotenv -e .env.prod cdk synth --profile ${npm_package_config_awsProfile}",
+    "deploy": "dotenv -e .env cdk deploy --profile ${npm_package_config_awsProfile}",
+    "deploy:prod": "dotenv -e .env.prod cdk deploy --profile ${npm_package_config_awsProfile}",
+    "local-invoke": "dotenv -e .env npm run build && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json --profile ${npm_package_config_awsProfile}",
+    "local-invoke:prod": "dotenv -e .env.prod npm run build && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json --profile ${npm_package_config_awsProfile}"
+  },
+  "config": {
+    "awsProfile": "default"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.86",
+    "@types/jest": "^26.0.10",
+    "@types/node": "^10.17.27",
+    "@typescript-eslint/eslint-plugin": "^5.54.1",
+    "@typescript-eslint/parser": "^5.54.1",
+    "aws-cdk-lib": "^2.0.0",
+    "constructs": "^10.0.0",
+    "dotenv": "^16.0.3",
+    "esbuild": "^0.14.49",
+    "eslint": "^8.35.0",
+    "eslint-config-prettier": "^8.7.0",
+    "eslint-import-resolver-typescript": "^3.5.3",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-prettier": "^4.2.1",
+    "jest": "^26.4.2",
+    "prettier": "^2.8.4",
+    "ts-jest": "^26.2.0",
+    "ts-node": "^9.0.0",
+    "typescript": "~3.9.7"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^1.6.0",
+    "@aws-lambda-powertools/metrics": "^1.6.0",
+    "@aws-lambda-powertools/tracer": "^1.6.0",
+    "@middy/core": "^3.1.0",
+    "aws-cdk-lib": "^2.33.0",
+    "constructs": "^10.0.0",
+    "source-map-support": "^0.5.16"
+  }
+}
