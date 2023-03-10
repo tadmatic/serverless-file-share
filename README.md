@@ -6,16 +6,22 @@ Includes:
 * Automated tests using jest
 
 ### Getting started
-1. Setup AWS profile in package.json
+**Step 1: Install dependencies**
 ```
-  "config": {
-    "awsProfile": "default"
-  },
+yarn # or npm install
 ```
 
-2. Create environment files - .env and .env.prod in project root director.
+**Step 2: Create an environment file** 
+In the project root folder create a file called ``.env``
+Refer to ``.env.sample`` for reference.
 
-Refer to .env.sample for reference
+Additional environments can be set up using the format ``.env.<environment_name>``, e.g. ``.env.prod``, ``.env.staging``
+
+**Step 3: Set AWS_PROFILE environment variable (optional)**
+If you don't want to use the default AWS profile and use a specific profile, set an environment variable:
+```
+AWS_PROFILE=myProfile
+```
 
 ### Commands
 #### Build CDK package

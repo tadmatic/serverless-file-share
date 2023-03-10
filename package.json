@@ -6,15 +6,12 @@
   },
   "scripts": {
     "test": "jest",
-    "build": "dotenv -e .env cdk synth --profile ${npm_package_config_awsProfile}",
-    "build:prod": "dotenv -e .env.prod cdk synth --profile ${npm_package_config_awsProfile}",
-    "deploy": "dotenv -e .env cdk deploy --profile ${npm_package_config_awsProfile}",
-    "deploy:prod": "dotenv -e .env.prod cdk deploy --profile ${npm_package_config_awsProfile}",
-    "local-invoke": "dotenv -e .env npm run build && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json --profile ${npm_package_config_awsProfile}",
-    "local-invoke:prod": "dotenv -e .env.prod npm run build && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json --profile ${npm_package_config_awsProfile}"
-  },
-  "config": {
-    "awsProfile": "default"
+    "build": "dotenv -e .env npx cdk synth",
+    "build:prod": "dotenv -e .env.prod npx cdk synth",
+    "deploy": "dotenv -e .env npx cdk deploy",
+    "deploy:prod": "dotenv -e .env.prod npx cdk deploy",
+    "local-invoke": "dotenv -e npm run build && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json",
+    "local-invoke:prod": "dotenv -e npm run build:prod && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.86",
