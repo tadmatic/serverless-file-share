@@ -21,7 +21,6 @@
     "@typescript-eslint/parser": "^5.54.1",
     "aws-cdk-lib": "^2.0.0",
     "constructs": "^10.0.0",
-    "dotenv": "^16.0.3",
     "esbuild": "^0.14.49",
     "eslint": "^8.35.0",
     "eslint-config-prettier": "^8.7.0",
@@ -41,6 +40,7 @@
     "@middy/core": "^3.1.0",
     "aws-cdk-lib": "^2.33.0",
     "constructs": "^10.0.0",
+    "dotenv-cli": "^7.0.0",
     "source-map-support": "^0.5.16"
   }
 }
