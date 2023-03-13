@@ -1,5 +1,5 @@
 {
-  "name": "aws-cdk-cron-boilerplate",
+  "name": "serverless-file-share",
   "version": "0.1.0",
   "bin": {
     "app": "bin/app.js"
@@ -40,6 +40,7 @@
     "@aws-lambda-powertools/tracer": "^1.6.0",
     "@middy/core": "^3.1.0",
     "aws-cdk-lib": "^2.33.0",
+    "aws-sdk": "^2.1333.0",
     "constructs": "^10.0.0",
     "source-map-support": "^0.5.16"
   }

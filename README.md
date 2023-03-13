@@ -1,9 +1,4 @@
-## AWS CDK boilerplate project for a simple cron job
-
-Includes:
-* ESLint/Prettier config - to ensure code style consistency
-* Lambda power tools for logging, metrics and tracing
-* Automated tests using jest
+## Serverless File Share Solution on AWS
 
 ### Getting started
 **Step 1: Install dependencies**
@@ -11,35 +6,30 @@ Includes:
 yarn # or npm install
 ```
 
-**Step 2: Create an environment file** 
-In the project root folder create a file called ``.env``
-Refer to ``.env.sample`` for reference.
-
-Additional environments can be set up using the format ``.env.<environment_name>``, e.g. ``.env.prod``, ``.env.staging``
-
-**Step 3: Set AWS_PROFILE environment variable (optional)**
+**Step 2: Setup AWS profile (optional)** 
 If you don't want to use the default AWS profile and use a specific profile, set an environment variable:
 ```
 AWS_PROFILE=myProfile
 ```
 
+In the project root folder create a file called ``.env`` and include the above.
+
 ### Commands
 #### Build CDK package
+Will generate CloudFormation template and compiled Lambda code.
 ```
 yarn build
 ```
 
-#### Build CDK package using .env.prod config
-```
-yarn build:prod
-```
-
 #### Deploy to AWS
+Will build and deploy to AWS.
 ```
 yarn deploy
 ```
 
-#### Deploy to prod using .env.prod config
+#### For prod build/deployment
+Will use environment variables in ```.env.prod``` instead of ```.env```
 ```
+yarn build:prod
 yarn deploy:prod
 ```
