@@ -17,6 +17,9 @@
     "@types/aws-lambda": "^8.10.86",
     "@types/jest": "^26.0.10",
     "@types/node": "^10.17.27",
+    "@types/oidc-provider": "^8.1.1",
+    "@types/simple-oauth2": "^5.0.4",
+    "@types/uuid": "^9.0.1",
     "@typescript-eslint/eslint-plugin": "^5.54.1",
     "@typescript-eslint/parser": "^5.54.1",
     "aws-cdk-lib": "^2.0.0",
@@ -39,9 +42,14 @@
     "@aws-lambda-powertools/metrics": "^1.6.0",
     "@aws-lambda-powertools/tracer": "^1.6.0",
     "@middy/core": "^3.1.0",
+    "amazon-cognito-identity-js": "^6.2.0",
     "aws-cdk-lib": "^2.33.0",
     "aws-sdk": "^2.1333.0",
     "constructs": "^10.0.0",
-    "source-map-support": "^0.5.16"
+    "node-fetch": "^3.3.1",
+    "oauth2-client": "^0.0.4",
+    "pkce-challenge": "^3.0.0",
+    "source-map-support": "^0.5.16",
+    "uuid": "^9.0.0"
   }
 }
