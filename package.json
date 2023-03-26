@@ -42,12 +42,11 @@
     "@aws-lambda-powertools/metrics": "^1.6.0",
     "@aws-lambda-powertools/tracer": "^1.6.0",
     "@middy/core": "^3.1.0",
-    "amazon-cognito-identity-js": "^6.2.0",
     "aws-cdk-lib": "^2.33.0",
     "aws-sdk": "^2.1333.0",
+    "aws-xray-sdk": "^3.4.1",
     "constructs": "^10.0.0",
     "node-fetch": "^3.3.1",
-    "oauth2-client": "^0.0.4",
     "pkce-challenge": "^3.0.0",
     "source-map-support": "^0.5.16",
     "uuid": "^9.0.0"

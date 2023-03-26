@@ -10,20 +10,30 @@ import { logger, metrics, tracer } from '../utilities/observability';
 const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const code = event.queryStringParameters?.code;
 
-  // use current URL
+  // Use current domain to generate redirect_uri
   const redirectUri = getRedirectUri(event);
+
+  // Get PKCE verifier from cookie
   const codeVerifier = getCookie(event, 'code_verifier');
 
   if (!code || !codeVerifier) {
-    throw new Error('Auth params missing');
+    return {
+      statusCode: 404,
+      body: JSON.stringify({ error: 'Missing params', code, codeVerifier }),
+    };
   }
 
   const result = await exchangeToken(code, codeVerifier, redirectUri);
+
+  // Save access_token in cookie and clear PKCE code_verifier cookie
   return {
     statusCode: 200,
     body: JSON.stringify(result),
-    headers: {
-      'Set-Cookie': `access_token=${result.access_token}; Secure; HttpOnly; SameSite=Strict`,
+    multiValueHeaders: {
+      'Set-Cookie': [
+        `access_token=${result.access_token}; Secure; HttpOnly; SameSite=Strict`,
+        'code_verifier=; Secure; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+      ],
     },
   };
 };

@@ -1,15 +1,16 @@
-import { APIGatewayProxyEvent } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayRequestAuthorizerEvent } from 'aws-lambda';
 import fetch from 'node-fetch';
 import { generateChallenge } from 'pkce-challenge';
 import { URLSearchParams } from 'url';
 import { v4 as uuid } from 'uuid';
 
+// Constants
 const COGNITO_BASE_URL = process.env.COGNITO_BASE_URL ?? '';
 const AUTHORIZATION_ENDPOINT = `${COGNITO_BASE_URL}/oauth2/authorize`;
 const TOKEN_ENDPOINT = `${COGNITO_BASE_URL}/oauth2/token`;
 const CLIENT_ID = process.env.COGNITO_CLIENT_ID ?? '';
 
-// Assert the shape of the response data
+// Response from Cognito token endpoint
 interface TokenResponse {
   id_token: string;
   access_token: string;
@@ -18,13 +19,18 @@ interface TokenResponse {
   token_type: string;
 }
 
+// Generate redirect URI - https://{api-domain}/auth_callback
 export const getRedirectUri = (event: APIGatewayProxyEvent): string => {
   // use current URL
   return `https://${event.requestContext.domainName}/prod/auth_callback`;
 };
 
-export const getCookie = (event: APIGatewayProxyEvent, cookieName: string): string | undefined => {
-  const cookies = event.headers.cookie;
+// Read cookie value from event headers
+export const getCookie = (
+  event: APIGatewayProxyEvent | APIGatewayRequestAuthorizerEvent,
+  cookieName: string,
+): string | undefined => {
+  const cookies = event.headers?.cookie;
   if (cookies) {
     const cookieArray = cookies.split(';');
     const myCookie = cookieArray.find((cookie) => cookie.trim().startsWith(`${cookieName}=`));
@@ -36,6 +42,7 @@ export const getCookie = (event: APIGatewayProxyEvent, cookieName: string): stri
   return undefined;
 };
 
+// Generate Cognito login url
 export const generateAuthUrl = (redirectUri: string) => {
   // Generate a unique PKCE code verifier and challenge
   const codeVerifier = uuid();
@@ -49,7 +56,7 @@ export const generateAuthUrl = (redirectUri: string) => {
     response_type: 'code',
     client_id: CLIENT_ID,
     redirect_uri: redirectUri,
-    scope: 'openid',
+    scope: 'aws.cognito.signin.user.admin',
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     // state,
@@ -63,6 +70,7 @@ export const generateAuthUrl = (redirectUri: string) => {
   };
 };
 
+// Exchange oAuth2 auth code for access token
 export async function exchangeToken(code: string, codeVerifier: string, redirectUri: string): Promise<TokenResponse> {
   const params = {
     grant_type: 'authorization_code',

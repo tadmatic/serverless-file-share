@@ -3,6 +3,7 @@ import { Duration, RemovalPolicy, Stack, StackProps, aws_lambda_nodejs } from 'a
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
@@ -57,6 +58,7 @@ export class MyStack extends Stack {
         stageName: 'prod',
         accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
+        tracingEnabled: true,
       },
       endpointTypes: [apigateway.EndpointType.REGIONAL],
     });
@@ -99,6 +101,7 @@ export class MyStack extends Stack {
       TABLE_NAME: table.tableName,
       COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
       COGNITO_BASE_URL: `https://${APPLICATION_NAME}.auth.${cdk.Aws.REGION}.amazoncognito.com`,
+      // API_URL: api.url <-- causes circular dependency (ffs)
     };
 
     // Global lambda settings
@@ -140,13 +143,47 @@ export class MyStack extends Stack {
       ...functionSettings,
     });
 
+    // Create a Lambda function to handle logout
+    const logoutFunction = new aws_lambda_nodejs.NodejsFunction(this, 'LogoutFunction', {
+      entry: './src/functions/logout.ts',
+      ...functionSettings,
+    });
+
+    // Add the required IAM permissions for the authorizer function
+    logoutFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['cognito-idp:GlobalSignOut'],
+        resources: [
+          `arn:aws:cognito-idp:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:userpool/${userPool.userPoolId}`,
+          `arn:aws:cognito-idp:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:userpool/${userPool.userPoolId}/client/${userPoolClient.userPoolClientId}`,
+        ],
+      }),
+    );
+
+    // Create a Lambda function to handle Cognito auth callback
+    const authorizerFunction = new aws_lambda_nodejs.NodejsFunction(this, 'AuthorizerFunction', {
+      entry: './src/functions/authorizer.ts',
+      ...functionSettings,
+    });
+
+    // Add the required IAM permissions for the authorizer function
+    authorizerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['cognito-idp:GetUser'],
+        resources: [
+          `arn:aws:cognito-idp:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:userpool/${userPool.userPoolId}`,
+          `arn:aws:cognito-idp:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:userpool/${userPool.userPoolId}/client/${userPoolClient.userPoolClientId}`,
+        ],
+      }),
+    );
+
     // Create a Cognito authorizer for the API Gateway
-    const authorizer = new apigateway.CfnAuthorizer(this, 'MyAuthorizer', {
-      name: 'MyAuthorizer',
-      identitySource: 'method.request.header.Authorization',
-      providerArns: [userPool.userPoolArn],
-      restApiId: api.restApiId,
-      type: apigateway.AuthorizationType.COGNITO,
+    const authorizer = new apigateway.RequestAuthorizer(this, 'MyAuthorizer', {
+      handler: authorizerFunction,
+      identitySources: [],
+      resultsCacheTtl: Duration.seconds(0),
     });
 
     // Define the "/download/{filepath+}" route
@@ -154,9 +191,8 @@ export class MyStack extends Stack {
       .addResource('download')
       .addResource('{filepath+}')
       .addMethod('GET', new apigateway.LambdaIntegration(downloadFunction), {
-        authorizer: {
-          authorizerId: authorizer.ref,
-        },
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer,
       });
 
     // Define the /auth_callback route
@@ -164,6 +200,9 @@ export class MyStack extends Stack {
 
     // Define the /login route
     api.root.addResource('login').addMethod('GET', new apigateway.LambdaIntegration(loginFunction));
+
+    // Define the /logout route
+    api.root.addResource('logout').addMethod('GET', new apigateway.LambdaIntegration(logoutFunction));
 
     // Output variables
     new cdk.CfnOutput(this, 'DownloadIntegrationUri', {

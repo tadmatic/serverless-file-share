@@ -12,12 +12,12 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
 
   const { authUrl, codeVerifier } = generateAuthUrl(redirectUri);
 
-  // Store the code verifier in a cookie and redirect to auth url
+  // Store the PKCE code verifier in a cookie and redirect to auth url
   const response = {
     statusCode: 302,
     body: '',
     headers: {
-      'Set-Cookie': `code_verifier=${codeVerifier}; Secure; HttpOnly; SameSite=Strict`,
+      'Set-Cookie': `code_verifier=${codeVerifier}; Secure; HttpOnly; SameSite=Lax`,
       Location: authUrl,
     },
   };
