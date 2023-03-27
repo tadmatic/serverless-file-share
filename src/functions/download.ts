@@ -6,6 +6,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 import * as AWSXRay from 'aws-xray-sdk';
 
+import { generateAuthUrl, getCookie, getRedirectUri, getUserDetailsViaAccessToken } from '../utilities/auth';
 import { logger, metrics, tracer } from '../utilities/observability';
 
 const s3 = AWSXRay.captureAWSClient(new AWS.S3());
@@ -13,24 +14,22 @@ const dynamodb = new AWS.DynamoDB.DocumentClient();
 
 const BUCKET_NAME = process.env.BUCKET_NAME ?? '';
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
-const URL_EXPIRATION_SECONDS = 300; // 5 minutes
+const URL_EXPIRATION_SECONDS = 30; // 30 seconds
 
 interface DownloadRequest {
   id: string;
   username: string;
-  filePath: string;
+  filepath: string;
   timestamp: string;
   presignedUrl: string;
 }
 
 const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const username = event.requestContext.authorizer?.username;
-  const filePath = event.pathParameters?.filepath;
+  const filepath = event.pathParameters?.filepath;
 
-  console.log('username');
-  console.log(username);
-
-  if (!filePath) {
+  // Validate file path
+  if (!filepath) {
     logger.error(`File path parameter is missing: ${event.resource}`);
 
     return {
@@ -39,10 +38,34 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     };
   }
 
+  // Check if cognito JWT access token is present
+  const token = getCookie(event, 'access_token');
+
+  // Validate access token
+  const user = token ? await getUserDetailsViaAccessToken(token) : undefined;
+
+  if (!user) {
+    // Generate redirect callback url
+    const redirectUri = getRedirectUri(event);
+
+    // Generate auth request, pass filepath as state paramater in oAuth request
+    const { authUrl, codeVerifier } = generateAuthUrl(redirectUri, filepath);
+
+    // Store the PKCE code verifier in a cookie and redirect to auth url
+    return {
+      statusCode: 302,
+      body: '',
+      headers: {
+        'Set-Cookie': `code_verifier=${codeVerifier}; Path=/; Secure; HttpOnly; SameSite=Lax`,
+        Location: authUrl,
+      },
+    };
+  }
+
   // Generate a presigned URL for the file that is valid for one use
   const params = {
     Bucket: BUCKET_NAME,
-    Key: filePath,
+    Key: filepath,
     Expires: URL_EXPIRATION_SECONDS,
   };
   const presignedUrl = s3.getSignedUrl('getObject', params);
@@ -50,7 +73,7 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
   // Record the download request in DynamoDB
   const id = event.requestContext.requestId;
   const timestamp = new Date().toISOString();
-  const downloadRequest: DownloadRequest = { id, username, filePath, timestamp, presignedUrl };
+  const downloadRequest: DownloadRequest = { id, username, filepath, timestamp, presignedUrl };
   const putParams = { TableName: TABLE_NAME, Item: downloadRequest };
   await dynamodb.put(putParams).promise();
 

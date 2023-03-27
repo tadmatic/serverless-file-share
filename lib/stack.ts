@@ -75,6 +75,7 @@ export class MyStack extends Stack {
           authorizationCodeGrant: true,
         },
         callbackUrls: [`https://${api.restApiId}.execute-api.${cdk.Aws.REGION}.amazonaws.com/prod/auth_callback`],
+        logoutUrls: [`https://${api.restApiId}.execute-api.${cdk.Aws.REGION}.amazonaws.com/prod/logout_callback`],
       },
     });
 
@@ -149,6 +150,12 @@ export class MyStack extends Stack {
       ...functionSettings,
     });
 
+    // Create a Lambda function to handle logout callback
+    const logoutCallbackFunction = new aws_lambda_nodejs.NodejsFunction(this, 'LogoutCallbackFunction', {
+      entry: './src/functions/logoutCallback.ts',
+      ...functionSettings,
+    });
+
     // Add the required IAM permissions for the authorizer function
     logoutFunction.addToRolePolicy(
       new iam.PolicyStatement({
@@ -161,6 +168,7 @@ export class MyStack extends Stack {
       }),
     );
 
+    /*
     // Create a Lambda function to handle Cognito auth callback
     const authorizerFunction = new aws_lambda_nodejs.NodejsFunction(this, 'AuthorizerFunction', {
       entry: './src/functions/authorizer.ts',
@@ -185,15 +193,13 @@ export class MyStack extends Stack {
       identitySources: [],
       resultsCacheTtl: Duration.seconds(0),
     });
+    */
 
     // Define the "/download/{filepath+}" route
     api.root
       .addResource('download')
       .addResource('{filepath+}')
-      .addMethod('GET', new apigateway.LambdaIntegration(downloadFunction), {
-        authorizationType: apigateway.AuthorizationType.CUSTOM,
-        authorizer,
-      });
+      .addMethod('GET', new apigateway.LambdaIntegration(downloadFunction));
 
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
@@ -203,6 +209,9 @@ export class MyStack extends Stack {
 
     // Define the /logout route
     api.root.addResource('logout').addMethod('GET', new apigateway.LambdaIntegration(logoutFunction));
+
+    // Define the /logout_callback route
+    api.root.addResource('logout_callback').addMethod('GET', new apigateway.LambdaIntegration(logoutCallbackFunction));
 
     // Output variables
     new cdk.CfnOutput(this, 'DownloadIntegrationUri', {

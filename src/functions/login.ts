@@ -17,7 +17,7 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     statusCode: 302,
     body: '',
     headers: {
-      'Set-Cookie': `code_verifier=${codeVerifier}; Secure; HttpOnly; SameSite=Lax`,
+      'Set-Cookie': `code_verifier=${codeVerifier}; Path=/; Secure; HttpOnly; SameSite=Lax`,
       Location: authUrl,
     },
   };

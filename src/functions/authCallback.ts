@@ -9,6 +9,7 @@ import { logger, metrics, tracer } from '../utilities/observability';
 
 const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const code = event.queryStringParameters?.code;
+  const filepath = event.queryStringParameters?.state;
 
   // Use current domain to generate redirect_uri
   const redirectUri = getRedirectUri(event);
@@ -25,9 +26,28 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
 
   const result = await exchangeToken(code, codeVerifier, redirectUri);
 
+  // if filepath was passed back in state param, redirect to filepath
+  if (filepath) {
+    // Save access_token in cookie and clear PKCE code_verifier cookie
+    return {
+      statusCode: 302,
+      body: '',
+      headers: {
+        Location: `/prod/download/${filepath}`,
+      },
+      multiValueHeaders: {
+        'Set-Cookie': [
+          `access_token=${result.access_token}; Secure; HttpOnly; SameSite=Strict`,
+          'code_verifier=; Secure; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        ],
+      },
+    };
+  }
+
   // Save access_token in cookie and clear PKCE code_verifier cookie
   return {
     statusCode: 200,
+    // print out cognito response
     body: JSON.stringify(result),
     multiValueHeaders: {
       'Set-Cookie': [

@@ -1,14 +1,22 @@
 import { APIGatewayProxyEvent, APIGatewayRequestAuthorizerEvent } from 'aws-lambda';
+import { CognitoIdentityServiceProvider } from 'aws-sdk';
+import * as AWSXRay from 'aws-xray-sdk';
 import fetch from 'node-fetch';
 import { generateChallenge } from 'pkce-challenge';
 import { URLSearchParams } from 'url';
 import { v4 as uuid } from 'uuid';
 
+import { logger } from '../utilities/observability';
+
 // Constants
-const COGNITO_BASE_URL = process.env.COGNITO_BASE_URL ?? '';
-const AUTHORIZATION_ENDPOINT = `${COGNITO_BASE_URL}/oauth2/authorize`;
-const TOKEN_ENDPOINT = `${COGNITO_BASE_URL}/oauth2/token`;
-const CLIENT_ID = process.env.COGNITO_CLIENT_ID ?? '';
+export const COGNITO_BASE_URL = process.env.COGNITO_BASE_URL ?? '';
+export const AUTHORIZATION_ENDPOINT = `${COGNITO_BASE_URL}/oauth2/authorize`;
+export const TOKEN_ENDPOINT = `${COGNITO_BASE_URL}/oauth2/token`;
+export const COGNITO_LOGOUT_URL = `${COGNITO_BASE_URL}/logout`;
+export const CLIENT_ID = process.env.COGNITO_CLIENT_ID ?? '';
+
+// Cognito client
+const cognito = AWSXRay.captureAWSClient(new CognitoIdentityServiceProvider());
 
 // Response from Cognito token endpoint
 interface TokenResponse {
@@ -19,10 +27,28 @@ interface TokenResponse {
   token_type: string;
 }
 
-// Generate redirect URI - https://{api-domain}/auth_callback
+// Get user details from cognito using a JWT access token
+export const getUserDetailsViaAccessToken = async (
+  token: string,
+): Promise<CognitoIdentityServiceProvider.GetUserResponse | undefined> => {
+  try {
+    const user = await cognito.getUser({ AccessToken: token }).promise();
+    return user;
+  } catch (err) {
+    logger.error(`Error validating access token: ${err}`);
+    return undefined;
+  }
+};
+
+// TODO: pass API url as environment variable to lambda so below 2 functions are not required
 export const getRedirectUri = (event: APIGatewayProxyEvent): string => {
-  // use current URL
+  // use current domain
   return `https://${event.requestContext.domainName}/prod/auth_callback`;
+};
+
+export const getLogoutUri = (event: APIGatewayProxyEvent): string => {
+  // use current domain
+  return `https://${event.requestContext.domainName}/prod/logout_callback`;
 };
 
 // Read cookie value from event headers
@@ -43,13 +69,10 @@ export const getCookie = (
 };
 
 // Generate Cognito login url
-export const generateAuthUrl = (redirectUri: string) => {
+export const generateAuthUrl = (redirectUri: string, filepath?: string) => {
   // Generate a unique PKCE code verifier and challenge
   const codeVerifier = uuid();
   const codeChallenge = generateChallenge(codeVerifier);
-
-  // Generate a random state parameter
-  // const state = uuid();
 
   // Construct the authorization URL with the necessary parameters
   const params = {
@@ -59,7 +82,7 @@ export const generateAuthUrl = (redirectUri: string) => {
     scope: 'aws.cognito.signin.user.admin',
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
-    // state,
+    state: filepath,
   };
   const queryString = new URLSearchParams(params).toString();
   const authUrl = `${AUTHORIZATION_ENDPOINT}?${queryString}`;
