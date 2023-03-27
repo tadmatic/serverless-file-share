@@ -59,7 +59,13 @@ yarn deploy:prod
 
 **```/download/{filepath}```**
 
-Will redirect to an S3 presigned URL after first checking if the user is logged in to Cognito.
+Will redirect to an S3 presigned URL after first checking if the user is logged in to Cognito and is allowed to access the file.
+
+If the user is not logged into Cognito, they will be redirected to the Cognito Hosted UI login screen.
+
+**```/logout```**
+
+Logout of Cognito and clear session/cookies.
 
 ---
 
@@ -85,4 +91,4 @@ Will redirect to an S3 presigned URL after first checking if the user is logged 
 
 6\. Add upload functionality?? upload directly to S3 or via API/Lambda?
 
-7\. Add detailed observability metrics and reporting - e.g. how many downloads per username
+7\. Add detailed observability metrics and reporting - e.g. how many downloads per user
