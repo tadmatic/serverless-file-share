@@ -84,3 +84,5 @@ Will redirect to an S3 presigned URL after first checking if the user is logged 
 * Step 2: If email flag present, send email via SNS/SES
 
 6\. Add upload functionality?? upload directly to S3 or via API/Lambda?
+
+7\. Add detailed observability metrics and reporting - e.g. how many downloads per username
