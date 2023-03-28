@@ -1,5 +1,5 @@
 {
-  "name": "serverless-file-share",
+  "name": "serverless-file-share-",
   "version": "0.1.0",
   "bin": {
     "app": "bin/app.js"
@@ -10,6 +10,7 @@
     "build:prod": "dotenv -e .env.prod npx cdk synth",
     "deploy": "dotenv -e .env npx cdk deploy",
     "deploy:prod": "dotenv -e .env.prod npx cdk deploy",
+    "watch": "dotenv -e .env npx cdk watch",
     "local-invoke": "dotenv -e npm run build && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json",
     "local-invoke:prod": "dotenv -e npm run build:prod && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json"
   },

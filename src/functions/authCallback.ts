@@ -37,8 +37,8 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
       },
       multiValueHeaders: {
         'Set-Cookie': [
-          `access_token=${result.access_token}; Secure; HttpOnly; SameSite=Strict`,
-          'code_verifier=; Secure; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+          `access_token=${result.access_token}; Path=/; Secure; HttpOnly; SameSite=Lax`,
+          'code_verifier=; Path=/; Secure; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
         ],
       },
     };
@@ -51,8 +51,8 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     body: JSON.stringify(result),
     multiValueHeaders: {
       'Set-Cookie': [
-        `access_token=${result.access_token}; Secure; HttpOnly; SameSite=Strict`,
-        'code_verifier=; Secure; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        `access_token=${result.access_token}; Path=/; Secure; HttpOnly; SameSite=Lax`,
+        'code_verifier=; Path=/; Secure; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
       ],
     },
   };
