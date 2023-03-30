@@ -1,15 +1,17 @@
 import { injectLambdaContext } from '@aws-lambda-powertools/logger';
 import { MetricUnits, logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import middy from '@middy/core';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
-import * as AWSXRay from 'aws-xray-sdk';
+// import * as AWSXRay from 'aws-xray-sdk';
 
 import { generateAuthUrl, getCookie, getRedirectUri, getUserDetailsViaAccessToken } from '../utilities/auth';
 import { logger, metrics, tracer } from '../utilities/observability';
 
-const s3 = AWSXRay.captureAWSClient(new AWS.S3());
+const s3 = new S3Client({}); // AWSXRay.captureAWSClient();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
 const BUCKET_NAME = process.env.BUCKET_NAME ?? '';
@@ -44,6 +46,7 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
   // Validate access token
   const user = token ? await getUserDetailsViaAccessToken(token) : undefined;
 
+  // If no valid user found, redirect to login page
   if (!user) {
     // Generate redirect callback url
     const redirectUri = getRedirectUri(event);
@@ -62,13 +65,18 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     };
   }
 
-  // Generate a presigned URL for the file that is valid for one use
+  const email = user.UserAttributes.find((x) => x.Name === 'email')?.Value;
+
   const params = {
     Bucket: BUCKET_NAME,
     Key: filepath,
     Expires: URL_EXPIRATION_SECONDS,
+    Metadata: {
+      email,
+    },
   };
-  const presignedUrl = s3.getSignedUrl('getObject', params);
+  const command = new GetObjectCommand(params);
+  const presignedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
 
   // Record the download request in DynamoDB
   const id = event.requestContext.requestId;

@@ -82,8 +82,9 @@ export const generateAuthUrl = (redirectUri: string, filepath?: string) => {
     scope: 'aws.cognito.signin.user.admin',
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
-    state: filepath,
+    state: filepath ?? '',
   };
+
   const queryString = new URLSearchParams(params).toString();
   const authUrl = `${AUTHORIZATION_ENDPOINT}?${queryString}`;
 

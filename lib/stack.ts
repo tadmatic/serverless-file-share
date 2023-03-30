@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Duration, RemovalPolicy, Stack, StackProps, aws_lambda_nodejs } from 'aws-cdk-lib';
+import { aws_glue as glue } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
@@ -8,19 +9,54 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
+// import * as athena from 'aws-sdk/clients/athena';
+// import * as crypto from 'crypto';
 
 // get application name from package.json
 import * as packageJson from '../package.json';
 const APPLICATION_NAME = packageJson.name;
 
+// include random bytes in domain name to ensure globally unique domain prefix is used
+const COGNITO_DOMAIN_PREFIX = `${APPLICATION_NAME}`; // -${crypto.randomBytes(8).toString('hex')}`;
+
 export class MyStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    // Create an S3 bucket to store the files
-    const bucket = new s3.Bucket(this, 'DownloadBucket', {
-      removalPolicy: RemovalPolicy.DESTROY,
+    /*-------------------------------
+     * Set up S3 buckets
+     -------------------------------*/
+
+    // Create an S3 bucket to store S3 access logs
+    const loggingBucket = new s3.Bucket(this, 'LoggingBucket', {
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // TODO: change to retain
     });
+
+    // Create S3 analytics bucket for Athena
+    const analyticsBucket = new s3.Bucket(this, `AnalyticsBucket`, {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      versioned: false,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.DESTROY, // TODO: change to retain
+    });
+
+    // Create an S3 bucket to store the files to share/download
+    const bucket = new s3.Bucket(this, 'DownloadBucket', {
+      versioned: true,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // TODO: change to retain
+      // enable s3 access logs
+      serverAccessLogsBucket: loggingBucket,
+      serverAccessLogsPrefix: 'access-logs/',
+    });
+
+    /*-------------------------------
+     * Set up Dynamo DB table
+     -------------------------------*/
 
     // Create a DynamoDB table to record download requests
     const table = new dynamodb.Table(this, 'DownloadTable', {
@@ -28,18 +64,9 @@ export class MyStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
-    // Create a Cognito user pool
-    const userPool = new cognito.UserPool(this, 'MyUserPool', {
-      selfSignUpEnabled: true,
-      signInAliases: { email: true },
-    });
-
-    // Add a domain prefix to enable Cognito Hosted UI
-    userPool.addDomain('MyUserPoolDomain', {
-      cognitoDomain: {
-        domainPrefix: APPLICATION_NAME,
-      },
-    });
+    /*-------------------------------
+     * Set up API gateway
+     -------------------------------*/
 
     // Create log group for API gateway
     const apiLogGroup = new logs.LogGroup(this, 'DownloadAPIAccessLog', {
@@ -61,6 +88,23 @@ export class MyStack extends Stack {
         tracingEnabled: true,
       },
       endpointTypes: [apigateway.EndpointType.REGIONAL],
+    });
+
+    /*-------------------------------
+     * Set up Cognito for authentication
+     -------------------------------*/
+
+    // Create a Cognito user pool
+    const userPool = new cognito.UserPool(this, 'MyUserPool', {
+      selfSignUpEnabled: true,
+      signInAliases: { email: true },
+    });
+
+    // Add a domain prefix to enable Cognito Hosted UI
+    userPool.addDomain('MyUserPoolDomain', {
+      cognitoDomain: {
+        domainPrefix: COGNITO_DOMAIN_PREFIX,
+      },
     });
 
     // Create a Cognito user pool client
@@ -90,6 +134,10 @@ export class MyStack extends Stack {
       ],
     });
 
+    /*-------------------------------
+     * Set up Lambda functions
+     -------------------------------*/
+
     // Declare environment variables for Lambda functions
     const environment = {
       AWS_ACCOUNT_ID: Stack.of(this).account,
@@ -101,7 +149,7 @@ export class MyStack extends Stack {
       BUCKET_NAME: bucket.bucketName,
       TABLE_NAME: table.tableName,
       COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
-      COGNITO_BASE_URL: `https://${APPLICATION_NAME}.auth.${cdk.Aws.REGION}.amazoncognito.com`,
+      COGNITO_BASE_URL: `https://${COGNITO_DOMAIN_PREFIX}.auth.${cdk.Aws.REGION}.amazoncognito.com`,
       // API_URL: api.url <-- causes circular dependency (ffs)
     };
 
@@ -168,6 +216,10 @@ export class MyStack extends Stack {
       }),
     );
 
+    /*-------------------------------
+     * Set up cookie based custom Lambda authorizer
+     -------------------------------*/
+
     /*
     // Create a Lambda function to handle Cognito auth callback
     const authorizerFunction = new aws_lambda_nodejs.NodejsFunction(this, 'AuthorizerFunction', {
@@ -195,6 +247,10 @@ export class MyStack extends Stack {
     });
     */
 
+    /*-------------------------------
+     * Set up API Gateway routes
+     -------------------------------*/
+
     // Define the "/download/{filepath+}" route
     api.root
       .addResource('download')
@@ -212,6 +268,90 @@ export class MyStack extends Stack {
 
     // Define the /logout_callback route
     api.root.addResource('logout_callback').addMethod('GET', new apigateway.LambdaIntegration(logoutCallbackFunction));
+
+    /*-------------------------------
+     * Set up download analytics using Athena and Glue
+     -------------------------------*/
+
+    // Create a new Glue database for storing S3 access logs
+    const glueDb = new glue.CfnDatabase(this, 'access_logs_database', {
+      catalogId: this.account,
+      databaseInput: {
+        name: 'access_logs_database',
+        locationUri: `s3://${analyticsBucket}`,
+        description: 'Glue database to enable Athena queries',
+      },
+    });
+
+    /*
+    const role = new iam.Role(this, 'GlueCrawlerRole', {
+      assumedBy: new iam.ServicePrincipal('glue.amazonaws.com'),
+    });
+
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          's3:GetObject',
+          's3:ListBucket',
+          'glue:GetConnection',
+          'glue:GetDatabase',
+          'glue:CreateTable',
+          'glue:BatchCreatePartition',
+          'glue:CreateDatabase',
+        ],
+        resources: [loggingBucket.bucketArn, `arn:${cdk.Aws.PARTITION}:s3:::${loggingBucket.bucketName}/*`],
+      }),
+    );
+    */
+
+    // Create a new Glue table for storing S3 access logs
+    new glue.CfnTable(this, 'access_logs_table', {
+      catalogId: cdk.Aws.ACCOUNT_ID,
+      databaseName: glueDb.ref,
+      tableInput: {
+        name: 'access_logs',
+        partitionKeys: [
+          { name: 'year', type: 'string' },
+          { name: 'month', type: 'string' },
+          { name: 'day', type: 'string' },
+          { name: 'hour', type: 'string' },
+        ],
+        storageDescriptor: {
+          columns: [
+            { name: 'bucket_owner', type: 'string' },
+            { name: 'bucket', type: 'string' },
+            { name: 'request_datetime', type: 'string' },
+            { name: 'remote_ip', type: 'string' },
+            { name: 'requester', type: 'string' },
+            { name: 'request_id', type: 'string' },
+            { name: 'operation', type: 'string' },
+            { name: 'key', type: 'string' },
+            { name: 'request_uri', type: 'string' },
+            { name: 'http_status', type: 'int' },
+            { name: 'error_code', type: 'string' },
+            { name: 'bytes_sent', type: 'bigint' },
+            { name: 'object_size', type: 'bigint' },
+            { name: 'total_time', type: 'int' },
+            { name: 'turn_around_time', type: 'int' },
+            { name: 'referrer', type: 'string' },
+            { name: 'user_agent', type: 'string' },
+            { name: 'version_id', type: 'string' },
+            { name: 'host_id', type: 'string' },
+            { name: 'sigv', type: 'string' },
+          ],
+          location: `s3://${loggingBucket}/access-logs`,
+          inputFormat: 'org.apache.hadoop.mapred.TextInputFormat',
+          outputFormat: 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat',
+          serdeInfo: {
+            serializationLibrary: 'org.apache.hadoop.hive.serde2.RegexSerDe',
+            parameters: {
+              'input.regex':
+                '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\\"[^"]*\\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\\"[^"]*\\"|-) ([^ ]*)(?: ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*))?.*$',
+            },
+          },
+        },
+      },
+    });
 
     // Output variables
     new cdk.CfnOutput(this, 'DownloadIntegrationUri', {
