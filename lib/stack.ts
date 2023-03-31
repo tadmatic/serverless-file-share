@@ -221,7 +221,6 @@ export class MyStack extends Stack {
      * Set up cookie based custom Lambda authorizer
      -------------------------------*/
 
-    /*
     // Create a Lambda function to handle Cognito auth callback
     const authorizerFunction = new aws_lambda_nodejs.NodejsFunction(this, 'AuthorizerFunction', {
       entry: './src/functions/authorizer.ts',
@@ -246,7 +245,6 @@ export class MyStack extends Stack {
       identitySources: [],
       resultsCacheTtl: Duration.seconds(0),
     });
-    */
 
     /*-------------------------------
      * Set up API Gateway routes
@@ -256,7 +254,10 @@ export class MyStack extends Stack {
     api.root
       .addResource('download')
       .addResource('{filepath+}')
-      .addMethod('GET', new apigateway.LambdaIntegration(downloadFunction));
+      .addMethod('GET', new apigateway.LambdaIntegration(downloadFunction), {
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer,
+      });
 
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
@@ -337,7 +338,7 @@ export class MyStack extends Stack {
     const query = `
       SELECT
           request_datetime,
-          REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-email=([^& ]+)', 1) as email,
+          REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-user-id=([^& ]+)', 1) as user_id,
           key as filepath,
           bytes_sent
       FROM
@@ -361,7 +362,7 @@ export class MyStack extends Stack {
       schema: glueDbName,
       columns: [
         { name: 'request_datetime', type: 'varchar' },
-        { name: 'email', type: 'varchar' },
+        { name: 'user_id', type: 'varchar' },
         { name: 'filepath', type: 'varchar' },
         { name: 'bytes_sent', type: 'bigint' },
       ],
@@ -387,7 +388,7 @@ export class MyStack extends Stack {
         storageDescriptor: {
           columns: [
             { name: 'request_datetime', type: 'string' },
-            { name: 'email', type: 'string' },
+            { name: 'user_id', type: 'string' },
             { name: 'filepath', type: 'string' },
             { name: 'bytes_sent', type: 'bigint' },
           ],

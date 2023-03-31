@@ -27,12 +27,18 @@ interface TokenResponse {
   token_type: string;
 }
 
+interface User extends CognitoIdentityServiceProvider.GetUserResponse {
+  userId?: string;
+}
+
 // Get user details from cognito using a JWT access token
-export const getUserDetailsViaAccessToken = async (
-  token: string,
-): Promise<CognitoIdentityServiceProvider.GetUserResponse | undefined> => {
+export const getUserDetailsViaAccessToken = async (token: string): Promise<User | undefined> => {
   try {
-    const user = await cognito.getUser({ AccessToken: token }).promise();
+    // Use access token to fetch user info
+    const user = (await cognito.getUser({ AccessToken: token }).promise()) as User;
+
+    // extract email address and set as user id
+    user.userId = user.UserAttributes.find((x) => x.Name === 'email')?.Value;
     return user;
   } catch (err) {
     logger.error(`Error validating access token: ${err}`);

@@ -16,7 +16,7 @@ const lambdaHandler = async (event: APIGatewayRequestAuthorizerEvent): Promise<A
     if (user) {
       // return authorizer success response
       return {
-        principalId: user.Username,
+        principalId: user.userId ?? '',
         policyDocument: {
           Version: '2012-10-17',
           Statement: [
@@ -28,21 +28,21 @@ const lambdaHandler = async (event: APIGatewayRequestAuthorizerEvent): Promise<A
           ],
         },
         context: {
-          username: user.Username,
+          userId: user.userId,
         },
       };
     }
   }
 
-  // otherwise, return authorizer deny response
+  // otherwise, still return authorizer ALLOW response without userId context
   return {
     principalId: '',
     policyDocument: {
       Version: '2012-10-17',
       Statement: [
         {
-          Action: 'deny',
-          Effect: 'deny',
+          Action: 'execute-api:Invoke',
+          Effect: 'Allow',
           Resource: event.methodArn,
         },
       ],

@@ -1,18 +1,13 @@
 import { injectLambdaContext } from '@aws-lambda-powertools/logger';
 import { MetricUnits, logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
-import { fromEnv } from '@aws-sdk/credential-providers';
-import { Hash } from '@aws-sdk/hash-node';
-import { HttpRequest } from '@aws-sdk/protocol-http';
-import { S3RequestPresigner } from '@aws-sdk/s3-request-presigner';
-import { parseUrl } from '@aws-sdk/url-parser';
-import { formatUrl } from '@aws-sdk/util-format-url';
 import middy from '@middy/core';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 
-import { generateAuthUrl, getCookie, getRedirectUri, getUserDetailsViaAccessToken } from '../utilities/auth';
+import { generateAuthUrl, getRedirectUri } from '../utilities/auth';
 import { logger, metrics, tracer } from '../utilities/observability';
+import { createPresignedUrl } from '../utilities/s3';
 
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
@@ -21,41 +16,21 @@ const TABLE_NAME = process.env.TABLE_NAME ?? '';
 
 interface DownloadRequest {
   id: string;
-  username: string;
+  userId: string;
   filepath: string;
   timestamp: string;
-  presignedUrl: string;
 }
-
-interface SignedUrlRequest {
-  bucket: string;
-  key: string;
-  email: string | undefined;
-}
-
-const createPresignedUrl = async ({ bucket, key, email }: SignedUrlRequest) => {
-  const url = parseUrl(`https://${bucket}.s3.${process.env.REGION}.amazonaws.com/${key}`);
-
-  // add custom meta data
-  if (email) {
-    url.query = {
-      'x-amz-email': email,
-    };
-  }
-
-  const presigner = new S3RequestPresigner({
-    credentials: fromEnv(),
-    region: process.env.REGION ?? '',
-    sha256: Hash.bind(null, 'sha256'),
-  });
-
-  const signedUrlObject = await presigner.presign(new HttpRequest(url));
-  return formatUrl(signedUrlObject);
-};
 
 const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const username = event.requestContext.authorizer?.username;
+  // Custom authorizer authenticates user and sets userId context
+  const userId = event.requestContext.authorizer?.userId;
+
+  // Get file path from URL path param
   const filepath = event.pathParameters?.filepath;
+
+  /*-------------------------------
+   * STEP 1: Validate request
+   * -----------------------------*/
 
   // Validate file path
   if (!filepath) {
@@ -67,14 +42,8 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     };
   }
 
-  // Check if cognito JWT access token is present
-  const token = getCookie(event, 'access_token');
-
-  // Validate access token
-  const user = token ? await getUserDetailsViaAccessToken(token) : undefined;
-
   // If no valid user found, redirect to login page
-  if (!user) {
+  if (!userId) {
     // Generate redirect callback url
     const redirectUri = getRedirectUri(event);
 
@@ -92,23 +61,43 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     };
   }
 
-  const email = user.UserAttributes.find((x) => x.Name === 'email')?.Value;
+  /*-------------------------------
+   * STEP 2: Check if user is allowed to download (e.g. check download quota from dynamodb)
+   * -----------------------------*/
 
-  const presignedUrl = await createPresignedUrl({
-    bucket: BUCKET_NAME,
-    key: filepath,
-    email,
-  });
+  // TODO
+
+  /*-------------------------------
+   * STEP 3: Record download
+   * -----------------------------*/
 
   // Record the download request in DynamoDB
-  const id = event.requestContext.requestId;
-  const timestamp = new Date().toISOString();
-  const downloadRequest: DownloadRequest = { id, username, filepath, timestamp, presignedUrl };
-  const putParams = { TableName: TABLE_NAME, Item: downloadRequest };
+  const item: DownloadRequest = {
+    id: event.requestContext.requestId,
+    userId,
+    filepath,
+    timestamp: new Date().toISOString(),
+  };
+
+  const putParams = {
+    TableName: TABLE_NAME,
+    Item: item,
+  };
+
   await dynamodb.put(putParams).promise();
 
   // Log download request metric to Cloudwatch
   metrics.addMetric('DownloadRequest', MetricUnits.Count, 1);
+
+  /*-------------------------------
+   * STEP 4: Generate presigned url
+   * -----------------------------*/
+
+  const presignedUrl = await createPresignedUrl({
+    bucket: BUCKET_NAME,
+    key: filepath,
+    userId,
+  });
 
   // Perform a server-side redirect to the presigned URL
   return {
