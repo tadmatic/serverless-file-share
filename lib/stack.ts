@@ -163,6 +163,7 @@ export class MyStack extends Stack {
     const downloadStateMachine = new sfn.StateMachine(this, 'CDKStateMachine', {
       definition: sfn.Chain.start(
           new LambdaInvoke(this, 'downloadTask', { lambdaFunction: downloadFunction, 
+            payloadResponseOnly:true,
             payload: sfn.TaskInput.fromObject({
               "id":sfn.JsonPath.stringAt("$.header.X-Amzn-Trace-Id"),
               "cookie": sfn.JsonPath.stringAt("$.header.cookie"),
@@ -219,14 +220,14 @@ export class MyStack extends Stack {
       .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(stateMachine));
     */
   
-    api.root
+    const resource = api.root
       .addResource('download')
       .addResource('{filepath+}')
       .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(downloadStateMachine, {
         headers:true,
         authorizer:true
       }));
-      /*
+
       const responseModel = api.addModel('Response', {
         schema: {
           type: apigateway.JsonSchemaType.STRING
@@ -235,7 +236,7 @@ export class MyStack extends Stack {
       resource.addMethodResponse({statusCode:"200", responseModels:{"text/plain":responseModel}});
       resource.addMethodResponse({statusCode:"307", responseModels:{"text/plain":responseModel}})
       resource.addMethodResponse({statusCode:"302", responseModels:{"text/plain":responseModel}})
-  */
+
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
 
