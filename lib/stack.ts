@@ -167,7 +167,8 @@ export class MyStack extends Stack {
             payload: sfn.TaskInput.fromObject({
               "id":sfn.JsonPath.stringAt("$.header.X-Amzn-Trace-Id"),
               "cookie": sfn.JsonPath.stringAt("$.header.cookie"),
-              "filepath": sfn.JsonPath.stringAt("$.path.filepath")
+              "filepath": sfn.JsonPath.stringAt("$.path.filepath"),
+              "host": sfn.JsonPath.stringAt("$.header.Host")
         })})
       ),
       stateMachineType: sfn.StateMachineType.EXPRESS,
@@ -212,14 +213,6 @@ export class MyStack extends Stack {
     });
     */
 
-    // Define the "/download/{filepath+}" route
-    /* migrate to step function
-    api.root
-      .addResource('download')
-      .addResource('{filepath+}')
-      .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(stateMachine));
-    */
-  
     api.root
       .addResource('download')
       .addResource('{filepath+}')
@@ -227,7 +220,7 @@ export class MyStack extends Stack {
         headers:true,
         authorizer:true
       }));
-      /* ie: should fix the response mapping model
+      /* //TODO ie to fix the response mapping
       const responseModel = api.addModel('Response', {
         schema: {
           type: apigateway.JsonSchemaType.STRING
@@ -237,6 +230,7 @@ export class MyStack extends Stack {
       resource.addMethodResponse({statusCode:"307", responseModels:{"text/plain":responseModel}})
       resource.addMethodResponse({statusCode:"302", responseModels:{"text/plain":responseModel}})
       */
+    
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
 

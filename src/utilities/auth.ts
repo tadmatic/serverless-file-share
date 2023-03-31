@@ -42,8 +42,11 @@ export const getUserDetailsViaAccessToken = async (
 
 // TODO: pass API url as environment variable to lambda so below 2 functions are not required
 export const getRedirectUri = (event: APIGatewayProxyEvent): string => {
-  // use current domain
-  return `https://${event.requestContext.domainName}/prod/auth_callback`;
+  return getRedirectUriByHost(event.requestContext.domainName);
+};
+
+export const getRedirectUriByHost = (host: string | undefined): string => {
+  return `https://${host}/prod/auth_callback`;
 };
 
 export const getLogoutUri = (event: APIGatewayProxyEvent): string => {
@@ -57,6 +60,13 @@ export const getCookie = (
   cookieName: string,
 ): string | undefined => {
   const cookies = event.headers?.cookie;
+  return getCookieFromString(cookies, cookieName);
+};
+
+export const getCookieFromString = (
+  cookies: string | undefined,
+  cookieName: string,
+): string | undefined => {
   if (cookies) {
     const cookieArray = cookies.split(';');
     const myCookie = cookieArray.find((cookie) => cookie.trim().startsWith(`${cookieName}=`));

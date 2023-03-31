@@ -6,7 +6,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 import * as AWSXRay from 'aws-xray-sdk';
 
-import { generateAuthUrl, getUserDetailsViaAccessToken } from '../utilities/auth';
+import { generateAuthUrl, getCookieFromString, getRedirectUriByHost, getUserDetailsViaAccessToken } from '../utilities/auth';
 import { logger, metrics, tracer } from '../utilities/observability';
 
 const s3 = AWSXRay.captureAWSClient(new AWS.S3());
@@ -16,24 +16,19 @@ const BUCKET_NAME = process.env.BUCKET_NAME ?? '';
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
 const URL_EXPIRATION_SECONDS = 30; // 30 seconds
 
-
 interface DownloadEvent {
-  id: string;
-  filepath: string;
-  cookie: string;
-}
-
-interface DownloadRequest {
   id: string;
   username: string;
   filepath: string;
   timestamp: string;
   presignedUrl: string;
+  cookie: string;
+  host: string;
 }
 
 const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResult> => {
 
-// Validate file path
+  // Validate file path
   if (!event.filepath) {
     logger.error(`File path parameter is missing: ${event.filepath}`);
 
@@ -47,7 +42,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
   }
 
   // Check if cognito JWT access token is present
-  const token = getCookie(event, 'access_token');
+  const token = getCookieFromString(event?.cookie, 'access_token');
   
   // Validate access token
   const user = token ? await getUserDetailsViaAccessToken(token) : undefined;
@@ -55,7 +50,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
 
   if (!user) {
     // Generate redirect callback url
-    const redirectUri = getRedirectUri();
+    const redirectUri = getRedirectUriByHost(event.host);
 
     // Generate auth request, pass filepath as state paramater in oAuth request
     const { authUrl, codeVerifier } = generateAuthUrl(redirectUri, event.filepath);
@@ -71,23 +66,23 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
       },
     };
   }
-
+  
   // Generate a presigned URL for the file that is valid for one use
   const params = {
     Bucket: BUCKET_NAME,
     Key: event.filepath,
     Expires: URL_EXPIRATION_SECONDS,
   };
-  const presignedUrl = s3.getSignedUrl('getObject', params);
+  event.presignedUrl = s3.getSignedUrl('getObject', params);
 
   // Record the download request in DynamoDB
-  const id = event.id; // request id is empty
-  const timestamp = new Date().toISOString();
-  const username = user.Username;
-  const filepath = event.filepath;
-  const downloadRequest: DownloadRequest = { id, username, filepath, timestamp, presignedUrl };
+  //const id = event.id; // request id is empty
+  event.timestamp = new Date().toISOString();
+  event.username = user.Username;
+  //const filepath = event.filepath;
+  //const downloadRequest: DownloadRequest = { id, username, filepath, timestamp, presignedUrl };
 
-  const putParams = { TableName: TABLE_NAME, Item: downloadRequest };
+  const putParams = { TableName: TABLE_NAME, Item: event };
   await dynamodb.put(putParams).promise();
 
   // Log download request metric to Cloudwatch
@@ -98,34 +93,12 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
   return {
     statusCode: 307,
     headers: {
-      Location: presignedUrl,
+      Location: event.presignedUrl,
       "Content-Type": "text/plain"
     },
     body: '',
-  };
+ };
 };
-
-const getRedirectUri = (): string => {
-  // use current domain
-  return 'https://${event.requestContext.domainName}/prod/auth_callback';
-};
-
-const getCookie = (
-  event: DownloadEvent,
-  cookieName: string,
-): string | undefined => {
-  const cookies = event?.cookie;
-  if (cookies) {
-    const cookieArray = cookies.split(';');
-    const myCookie = cookieArray.find((cookie) => cookie.trim().startsWith(`${cookieName}=`));
-    if (myCookie) {
-      const cookieValue = myCookie.split('=')[1];
-      return cookieValue;
-    }
-  }
-  return undefined;
-};
-
 
 export const handler = middy(lambdaHandler)
   .use(captureLambdaHandler(tracer))
