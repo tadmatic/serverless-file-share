@@ -73,7 +73,7 @@ Logout of Cognito and clear session/cookies.
 
 1\. Add eligibility checks after authentication - e.g. has user reached their download quota
 
-2\. Refactor download lambda function into an express step function:
+2\. Refactor download lambda function into an express step function: (Islam)
 * Step 1: Validate access token
 * Step 2: Eligibility checks (dynamodb)
 * Step 3: Record download

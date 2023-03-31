@@ -7,6 +7,9 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
+import { TaskInput } from 'aws-cdk-lib/aws-stepfunctions';
+import { LambdaInvoke, Mode } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
 
 // get application name from package.json
@@ -156,6 +159,19 @@ export class MyStack extends Stack {
       ...functionSettings,
     });
 
+    // Create download state machine
+    const downloadStateMachine = new sfn.StateMachine(this, 'CDKStateMachine', {
+      definition: sfn.Chain.start(
+          new LambdaInvoke(this, 'downloadTask', { lambdaFunction: downloadFunction, 
+            payload: sfn.TaskInput.fromObject({
+              "id":sfn.JsonPath.stringAt("$.header.X-Amzn-Trace-Id"),
+              "cookie": sfn.JsonPath.stringAt("$.header.cookie"),
+              "filepath": sfn.JsonPath.stringAt("$.path.filepath")
+        })})
+      ),
+      stateMachineType: sfn.StateMachineType.EXPRESS,
+    });
+
     // Add the required IAM permissions for the authorizer function
     logoutFunction.addToRolePolicy(
       new iam.PolicyStatement({
@@ -196,11 +212,30 @@ export class MyStack extends Stack {
     */
 
     // Define the "/download/{filepath+}" route
+    /* migrate to step function
     api.root
       .addResource('download')
       .addResource('{filepath+}')
-      .addMethod('GET', new apigateway.LambdaIntegration(downloadFunction));
-
+      .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(stateMachine));
+    */
+  
+    api.root
+      .addResource('download')
+      .addResource('{filepath+}')
+      .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(downloadStateMachine, {
+        headers:true,
+        authorizer:true
+      }));
+      /*
+      const responseModel = api.addModel('Response', {
+        schema: {
+          type: apigateway.JsonSchemaType.STRING
+        }
+      });
+      resource.addMethodResponse({statusCode:"200", responseModels:{"text/plain":responseModel}});
+      resource.addMethodResponse({statusCode:"307", responseModels:{"text/plain":responseModel}})
+      resource.addMethodResponse({statusCode:"302", responseModels:{"text/plain":responseModel}})
+  */
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
 
