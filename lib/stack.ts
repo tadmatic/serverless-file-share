@@ -9,7 +9,6 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
 // import * as crypto from 'crypto';
 
@@ -275,39 +274,20 @@ export class MyStack extends Stack {
      * Set up download analytics using Athena and Glue
      -------------------------------*/
 
+    const glueDbName = `${APPLICATION_NAME}-access-logs`;
+
     // Create a new Glue database for storing S3 access logs
-    const glueDb = new glue.CfnDatabase(this, 'access_logs_database', {
+    const glueDb = new glue.CfnDatabase(this, 'AccessLogsGlueDatabase', {
       catalogId: this.account,
       databaseInput: {
-        name: 'access_logs_database',
+        name: glueDbName,
         locationUri: `s3://${analyticsBucket.bucketName}`,
         description: 'Glue database to enable Athena queries',
       },
     });
 
-    /*
-    const role = new iam.Role(this, 'GlueCrawlerRole', {
-      assumedBy: new iam.ServicePrincipal('glue.amazonaws.com'),
-    });
-
-    role.addToPolicy(
-      new iam.PolicyStatement({
-        actions: [
-          's3:GetObject',
-          's3:ListBucket',
-          'glue:GetConnection',
-          'glue:GetDatabase',
-          'glue:CreateTable',
-          'glue:BatchCreatePartition',
-          'glue:CreateDatabase',
-        ],
-        resources: [loggingBucket.bucketArn, `arn:${cdk.Aws.PARTITION}:s3:::${loggingBucket.bucketName}/*`],
-      }),
-    );
-    */
-
     // Create a new Glue table for storing S3 access logs
-    new glue.CfnTable(this, 'access_logs_table', {
+    new glue.CfnTable(this, 'AccessLogsGlueTable', {
       catalogId: cdk.Aws.ACCOUNT_ID,
       databaseName: glueDb.ref,
       tableInput: {
@@ -353,12 +333,12 @@ export class MyStack extends Stack {
       },
     });
 
-    const viewQuery = `
-      CREATE OR REPLACE VIEW download_report AS
+    // Create SQL query for downlaod report view
+    const query = `
       SELECT
           request_datetime,
           REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-email=([^& ]+)', 1) as email,
-          key,
+          key as filepath,
           bytes_sent
       FROM
           access_logs
@@ -369,89 +349,62 @@ export class MyStack extends Stack {
           request_datetime
     `;
 
+    // Helper function to create 'presto' JSON model
     const createPrestoView = (query: string): string => {
       return `/* Presto View: ${new Buffer(query).toString('base64')} */`;
     };
 
-    new glue.CfnTable(this, 'DownloadReport', {
+    // Presto JSON model (note: use varchar instead of string)
+    const prestoObject = {
+      originalSql: query,
+      catalog: 'awsdatactalog',
+      schema: glueDbName,
+      columns: [
+        { name: 'request_datetime', type: 'varchar' },
+        { name: 'email', type: 'varchar' },
+        { name: 'filepath', type: 'varchar' },
+        { name: 'bytes_sent', type: 'bigint' },
+      ],
+      owner: this.account,
+      runAsInvoker: false,
+      properties: {},
+    };
+
+    // Create view as a Glue Table with table type = 'VIRTUAL VIEW'
+    new glue.CfnTable(this, 'AccessLogsDownloadReportView', {
       catalogId: cdk.Aws.ACCOUNT_ID,
       databaseName: glueDb.ref,
       tableInput: {
         name: 'download_report',
         tableType: 'VIRTUAL_VIEW',
+        viewExpandedText: '/* Presto View */',
+        viewOriginalText: createPrestoView(JSON.stringify(prestoObject)),
         parameters: {
-          classification: 'parquet',
-          presto_view: true,
+          presto_view: 'true',
+          comment: 'Presto View',
         },
-        viewOriginalText: createPrestoView(viewQuery),
-        viewExpandedText: viewQuery,
+        partitionKeys: [],
         storageDescriptor: {
           columns: [
             { name: 'request_datetime', type: 'string' },
             { name: 'email', type: 'string' },
-            { name: 'key', type: 'string' },
-            { name: 'http_status', type: 'int' },
+            { name: 'filepath', type: 'string' },
             { name: 'bytes_sent', type: 'bigint' },
           ],
+          serdeInfo: {},
+          location: '',
         },
       },
     });
 
-    /*
-    new tasks.AthenaStartQueryExecution(this, 'AthenaViewQuery', {
-      queryString: `
-        CREATE OR REPLACE VIEW download_report AS
-        SELECT
-            request_datetime,
-            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-email=([^& ]+)', 1) as email,
-            key,
-            http_status,
-            bytes_sent
-        FROM
-            "AwsDataCatalog"."access_logs_database"."access_logs"
-        WHERE
-            operation = 'REST.GET.OBJECT'
-        ORDER BY
-            request_datetime
-      `,
-      queryExecutionContext: {
-        databaseName: glueDb.ref,
-      },
-      outputPath: `s3://${analyticsBucket.bucketName}`,
-    });
-    */
-
-    /*
-    const workGroup = new athena.CfnWorkGroup(this, 'AthenaWorkGroup', {
-      name: APPLICATION_NAME,
-      workGroupConfiguration: {
-        resultConfiguration: {
-          outputLocation: `s3://${analyticsBucket.bucketName}`,
-        },
-      },
-    });
-
-    const view = new athena.CfnNamedQuery(this, 'DownloadReportView', {
-      database: glueDb.ref,
-      workGroup: workGroup.ref,
+    // Create Athena saved query
+    new athena.CfnNamedQuery(this, 'AccessLogDownloadReportSavedQuery', {
+      database: glueDbName,
+      workGroup: 'primary',
       name: 'download_report',
-      queryString: `
-        CREATE OR REPLACE VIEW download_report AS
-        SELECT
-            request_datetime,
-            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-email=([^& ]+)', 1) as email,
-            key,
-            http_status,
-            bytes_sent
-        FROM
-            access_logs
-        WHERE
-            operation = 'REST.GET.OBJECT'
-        ORDER BY
-            request_datetime
-      `,
+      description: 'Download Report',
+      queryString: query,
     });
-    */
 
     // Output variables
     new cdk.CfnOutput(this, 'DownloadIntegrationUri', {

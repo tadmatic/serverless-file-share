@@ -1,5 +1,5 @@
 {
-  "name": "serverless-file-share-v2",
+  "name": "serverless-file-share",
   "version": "0.1.0",
   "bin": {
     "app": "bin/app.js"
