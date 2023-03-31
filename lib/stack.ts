@@ -2,14 +2,15 @@ import * as cdk from 'aws-cdk-lib';
 import { Duration, RemovalPolicy, Stack, StackProps, aws_lambda_nodejs } from 'aws-cdk-lib';
 import { aws_glue as glue } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as athena from 'aws-cdk-lib/aws-athena';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
-// import * as athena from 'aws-sdk/clients/athena';
 // import * as crypto from 'crypto';
 
 // get application name from package.json
@@ -150,6 +151,7 @@ export class MyStack extends Stack {
       TABLE_NAME: table.tableName,
       COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
       COGNITO_BASE_URL: `https://${COGNITO_DOMAIN_PREFIX}.auth.${cdk.Aws.REGION}.amazoncognito.com`,
+      REGION: this.region,
       // API_URL: api.url <-- causes circular dependency (ffs)
     };
 
@@ -278,7 +280,7 @@ export class MyStack extends Stack {
       catalogId: this.account,
       databaseInput: {
         name: 'access_logs_database',
-        locationUri: `s3://${analyticsBucket}`,
+        locationUri: `s3://${analyticsBucket.bucketName}`,
         description: 'Glue database to enable Athena queries',
       },
     });
@@ -310,12 +312,6 @@ export class MyStack extends Stack {
       databaseName: glueDb.ref,
       tableInput: {
         name: 'access_logs',
-        partitionKeys: [
-          { name: 'year', type: 'string' },
-          { name: 'month', type: 'string' },
-          { name: 'day', type: 'string' },
-          { name: 'hour', type: 'string' },
-        ],
         storageDescriptor: {
           columns: [
             { name: 'bucket_owner', type: 'string' },
@@ -338,8 +334,12 @@ export class MyStack extends Stack {
             { name: 'version_id', type: 'string' },
             { name: 'host_id', type: 'string' },
             { name: 'sigv', type: 'string' },
+            { name: 'cipher_suite', type: 'string' },
+            { name: 'auth_type', type: 'string' },
+            { name: 'endpoint', type: 'string' },
+            { name: 'tlsversion', type: 'string' },
           ],
-          location: `s3://${loggingBucket}/access-logs`,
+          location: `s3://${loggingBucket.bucketName}/access-logs`,
           inputFormat: 'org.apache.hadoop.mapred.TextInputFormat',
           outputFormat: 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat',
           serdeInfo: {
@@ -352,6 +352,106 @@ export class MyStack extends Stack {
         },
       },
     });
+
+    const viewQuery = `
+      CREATE OR REPLACE VIEW download_report AS
+      SELECT
+          request_datetime,
+          REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-email=([^& ]+)', 1) as email,
+          key,
+          bytes_sent
+      FROM
+          access_logs
+      WHERE
+          operation = 'REST.GET.OBJECT'
+          AND http_status = 200
+      ORDER BY
+          request_datetime
+    `;
+
+    const createPrestoView = (query: string): string => {
+      return `/* Presto View: ${new Buffer(query).toString('base64')} */`;
+    };
+
+    new glue.CfnTable(this, 'DownloadReport', {
+      catalogId: cdk.Aws.ACCOUNT_ID,
+      databaseName: glueDb.ref,
+      tableInput: {
+        name: 'download_report',
+        tableType: 'VIRTUAL_VIEW',
+        parameters: {
+          classification: 'parquet',
+          presto_view: true,
+        },
+        viewOriginalText: createPrestoView(viewQuery),
+        viewExpandedText: viewQuery,
+        storageDescriptor: {
+          columns: [
+            { name: 'request_datetime', type: 'string' },
+            { name: 'email', type: 'string' },
+            { name: 'key', type: 'string' },
+            { name: 'http_status', type: 'int' },
+            { name: 'bytes_sent', type: 'bigint' },
+          ],
+        },
+      },
+    });
+
+    /*
+    new tasks.AthenaStartQueryExecution(this, 'AthenaViewQuery', {
+      queryString: `
+        CREATE OR REPLACE VIEW download_report AS
+        SELECT
+            request_datetime,
+            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-email=([^& ]+)', 1) as email,
+            key,
+            http_status,
+            bytes_sent
+        FROM
+            "AwsDataCatalog"."access_logs_database"."access_logs"
+        WHERE
+            operation = 'REST.GET.OBJECT'
+        ORDER BY
+            request_datetime
+      `,
+      queryExecutionContext: {
+        databaseName: glueDb.ref,
+      },
+      outputPath: `s3://${analyticsBucket.bucketName}`,
+    });
+    */
+
+    /*
+    const workGroup = new athena.CfnWorkGroup(this, 'AthenaWorkGroup', {
+      name: APPLICATION_NAME,
+      workGroupConfiguration: {
+        resultConfiguration: {
+          outputLocation: `s3://${analyticsBucket.bucketName}`,
+        },
+      },
+    });
+
+    const view = new athena.CfnNamedQuery(this, 'DownloadReportView', {
+      database: glueDb.ref,
+      workGroup: workGroup.ref,
+      name: 'download_report',
+      queryString: `
+        CREATE OR REPLACE VIEW download_report AS
+        SELECT
+            request_datetime,
+            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-email=([^& ]+)', 1) as email,
+            key,
+            http_status,
+            bytes_sent
+        FROM
+            access_logs
+        WHERE
+            operation = 'REST.GET.OBJECT'
+        ORDER BY
+            request_datetime
+      `,
+    });
+    */
 
     // Output variables
     new cdk.CfnOutput(this, 'DownloadIntegrationUri', {
