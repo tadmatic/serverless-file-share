@@ -220,14 +220,14 @@ export class MyStack extends Stack {
       .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(stateMachine));
     */
   
-    const resource = api.root
+    api.root
       .addResource('download')
       .addResource('{filepath+}')
       .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(downloadStateMachine, {
         headers:true,
         authorizer:true
       }));
-
+      /* ie: should fix the response mapping model
       const responseModel = api.addModel('Response', {
         schema: {
           type: apigateway.JsonSchemaType.STRING
@@ -236,7 +236,7 @@ export class MyStack extends Stack {
       resource.addMethodResponse({statusCode:"200", responseModels:{"text/plain":responseModel}});
       resource.addMethodResponse({statusCode:"307", responseModels:{"text/plain":responseModel}})
       resource.addMethodResponse({statusCode:"302", responseModels:{"text/plain":responseModel}})
-
+      */
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
 
