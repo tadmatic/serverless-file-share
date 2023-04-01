@@ -3,14 +3,14 @@ import { MetricUnits, logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
 import * as AWS from 'aws-sdk';
+
+import { DownloadEvent } from './types';
 import { logger, metrics, tracer } from '../../utilities/observability';
-import { IDownload } from './types';
 
 const dynamodb = new AWS.DynamoDB.DocumentClient();
-const BUCKET_NAME = process.env.BUCKET_NAME ?? '';
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
 
-const lambdaHandler = async (event: IDownload): Promise<IDownload> => {
+const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
   const { filepath, userId } = event;
 
   // Record the download request in DynamoDB

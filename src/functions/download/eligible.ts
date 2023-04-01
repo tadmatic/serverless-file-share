@@ -2,16 +2,16 @@ import { injectLambdaContext } from '@aws-lambda-powertools/logger';
 import { logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
-import { APIGatewayProxyResult } from 'aws-lambda';
-import { logger, metrics, tracer } from '../../utilities/observability';
-import { IDownload } from './types';
 
-const lambdaHandler = async (event: IDownload): Promise<APIGatewayProxyResult> => {
-  return {
-    statusCode: event.responseContext.statusCode,
-    headers: event.responseContext.headers,
-    body: event.responseContext.body??'',
-  };
+import { DownloadEvent } from './types';
+import { logger, metrics, tracer } from '../../utilities/observability';
+
+const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
+  const { filepath, userId } = event;
+
+  // Check if user is allowed to download (e.g. check download quota from dynamodb)
+
+  return event;
 };
 
 export const handler = middy(lambdaHandler)

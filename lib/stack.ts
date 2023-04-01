@@ -174,7 +174,12 @@ export class MyStack extends Stack {
 
     // Create a Lambda function to handle download requests
     const startDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'startDownloadFunction', {
-      entry: './src/functions/download/start.ts',
+      entry: './src/functions/download/process.ts',
+      ...functionSettings,
+    });
+
+    const eligibleDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'eligibleDownloadFunction', {
+      entry: './src/functions/download/eligible.ts',
       ...functionSettings,
     });
 
@@ -191,7 +196,7 @@ export class MyStack extends Stack {
     table.grantWriteData(recordDownloadFunction);
 
     const endDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endDownloadFunction', {
-      entry: './src/functions/download/end.ts',
+      entry: './src/functions/download/complete.ts',
       ...functionSettings,
     });
 
@@ -262,38 +267,57 @@ export class MyStack extends Stack {
 
     /*-------------------------------
      * Set up download step function
-     -------------------------------*/ 
-     const startDownloadInvocation = new LambdaInvoke(this, 'Start Download', {
-        lambdaFunction: startDownloadFunction,
-        payloadResponseOnly: true,
-        payload: sfn.TaskInput.fromObject({
-          id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
-          userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
-          filepath: sfn.JsonPath.stringAt('$.path.filepath'),
-          requestContext: {
-            requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
-            domainName: sfn.JsonPath.stringAt('$.header.Host'),
-          },
-          responseContext: {
-            statusCode: 200 //ie: need to find a better way
-          }
-        })
+     -------------------------------*/
+    const startDownloadInvocation = new LambdaInvoke(this, 'Validate Download', {
+      lambdaFunction: startDownloadFunction,
+      payloadResponseOnly: true,
+      payload: sfn.TaskInput.fromObject({
+        id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+        userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
+        filepath: sfn.JsonPath.stringAt('$.path.filepath'),
+        requestContext: {
+          requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+          domainName: sfn.JsonPath.stringAt('$.header.Host'),
+        },
+        responseContext: {
+          statusCode: 200, //set default response, need to find a cleaner approach
+        },
+      }),
+    });
+    const isValDownloadValid = new sfn.Choice(this, 'Is Valid?');
+    const eligibleDownloadURLInvocation = new LambdaInvoke(this, 'Check Eligibility', {
+      lambdaFunction: eligibleDownloadFunction,
+      outputPath: '$.Payload',
     });
     const isDownloadEligible = new sfn.Choice(this, 'Is Eligible?');
-    const generateDownloadURLInvocation = new LambdaInvoke(this, 'Generate URL', {lambdaFunction:generateDownloadURLFunction, outputPath: '$.Payload'});
-    const recordDownloadInvocation = new LambdaInvoke(this, 'Record Download', {lambdaFunction:recordDownloadFunction, outputPath: '$.Payload'});
-    const endDownloadInvocation = new LambdaInvoke(this, 'End Download', {lambdaFunction:endDownloadFunction, outputPath: '$.Payload'});
+    const generateDownloadURLInvocation = new LambdaInvoke(this, 'Generate URL', {
+      lambdaFunction: generateDownloadURLFunction,
+      outputPath: '$.Payload',
+    });
+    const recordDownloadInvocation = new LambdaInvoke(this, 'Record Download', {
+      lambdaFunction: recordDownloadFunction,
+      outputPath: '$.Payload',
+    });
+    const endDownloadInvocation = new LambdaInvoke(this, 'Complete Download', {
+      lambdaFunction: endDownloadFunction,
+      outputPath: '$.Payload',
+    });
 
-    const downloadChain = sfn.Chain
-                            .start(startDownloadInvocation)
-                            .next(
-                              isDownloadEligible
-                                  .when(sfn.Condition.numberEquals('$.responseContext.statusCode', 200),
-                                              recordDownloadInvocation
-                                        .next(generateDownloadURLInvocation)
-                                        .next(endDownloadInvocation))
-                                  .otherwise(endDownloadInvocation)
-                              );
+    const downloadChain = sfn.Chain.start(startDownloadInvocation).next(
+      isValDownloadValid
+        .when(
+          sfn.Condition.numberEquals('$.responseContext.statusCode', 200),
+          eligibleDownloadURLInvocation.next(
+            isDownloadEligible
+              .when(
+                sfn.Condition.numberEquals('$.responseContext.statusCode', 200),
+                recordDownloadInvocation.next(generateDownloadURLInvocation).next(endDownloadInvocation),
+              )
+              .otherwise(endDownloadInvocation),
+          ),
+        )
+        .otherwise(endDownloadInvocation),
+    );
 
     const downloadStateMachine = new sfn.StateMachine(this, 'DownloadStateMachine', {
       definition: downloadChain,

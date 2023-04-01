@@ -2,30 +2,16 @@ import { injectLambdaContext } from '@aws-lambda-powertools/logger';
 import { logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
-
+import { APIGatewayProxyResult } from 'aws-lambda';
 import { DownloadEvent } from './types';
 import { logger, metrics, tracer } from '../../utilities/observability';
-import { createPresignedUrl } from '../../utilities/s3';
 
-const BUCKET_NAME = process.env.BUCKET_NAME ?? '';
-
-const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
-  const presignedUrl = await createPresignedUrl({
-    bucket: BUCKET_NAME,
-    key: event.filepath,
-    userId: event.userId,
-  });
-
-  // Perform a server-side redirect to the presigned URL
-  event.responseContext = {
-    statusCode: 307,
-    headers: {
-      Location: presignedUrl,
-    },
-    body: '',
+const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResult> => {
+  return {
+    statusCode: event.responseContext.statusCode,
+    headers: event.responseContext.headers,
+    body: event.responseContext.body ?? '',
   };
-
-  return event;
 };
 
 export const handler = middy(lambdaHandler)
