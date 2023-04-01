@@ -46,13 +46,22 @@ export const getUserDetailsViaAccessToken = async (token: string): Promise<User 
   }
 };
 
+export interface DownloadEvent {
+  filepath: string;
+  userId: string;
+  requestContext: {
+    requestId: string;
+    domainName: string;
+  };
+}
+
 // TODO: pass API url as environment variable to lambda so below 2 functions are not required
-export const getRedirectUri = (event: APIGatewayProxyEvent): string => {
+export const getRedirectUri = (event: APIGatewayProxyEvent | DownloadEvent): string => {
   // use current domain
   return `https://${event.requestContext.domainName}/prod/auth_callback`;
 };
 
-export const getLogoutUri = (event: APIGatewayProxyEvent): string => {
+export const getLogoutUri = (event: APIGatewayProxyEvent | DownloadEvent): string => {
   // use current domain
   return `https://${event.requestContext.domainName}/prod/logout_callback`;
 };

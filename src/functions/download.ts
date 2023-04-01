@@ -2,10 +2,10 @@ import { injectLambdaContext } from '@aws-lambda-powertools/logger';
 import { MetricUnits, logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyResult } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 
-import { generateAuthUrl, getRedirectUri } from '../utilities/auth';
+import { DownloadEvent, generateAuthUrl, getRedirectUri } from '../utilities/auth';
 import { logger, metrics, tracer } from '../utilities/observability';
 import { createPresignedUrl } from '../utilities/s3';
 
@@ -21,12 +21,8 @@ interface DownloadRequest {
   timestamp: string;
 }
 
-const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Custom authorizer authenticates user and sets userId context
-  const userId = event.requestContext.authorizer?.userId;
-
-  // Get file path from URL path param
-  const filepath = event.pathParameters?.filepath;
+const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResult> => {
+  const { filepath, userId } = event;
 
   /*-------------------------------
    * STEP 1: Validate request
@@ -34,7 +30,7 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
 
   // Validate file path
   if (!filepath) {
-    logger.error(`File path parameter is missing: ${event.resource}`);
+    logger.error(`File path parameter is missing: ${event.filepath}`);
 
     return {
       statusCode: 400,
@@ -43,7 +39,7 @@ const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
   }
 
   // If no valid user found, redirect to login page
-  if (!userId) {
+  if (!userId || userId === '') {
     // Generate redirect callback url
     const redirectUri = getRedirectUri(event);
 

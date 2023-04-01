@@ -9,8 +9,10 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
+import { TaskInput } from 'aws-cdk-lib/aws-stepfunctions';
+import { LambdaInvoke, Mode } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
-// import * as crypto from 'crypto';
 
 // get application name from package.json
 import * as packageJson from '../package.json';
@@ -247,6 +249,30 @@ export class MyStack extends Stack {
     });
 
     /*-------------------------------
+     * Set up step functions
+     -------------------------------*/
+
+    // Create download state machine
+    const downloadStateMachine = new sfn.StateMachine(this, 'CDKStateMachine', {
+      definition: sfn.Chain.start(
+        new LambdaInvoke(this, 'downloadTask', {
+          lambdaFunction: downloadFunction,
+          payloadResponseOnly: true,
+          payload: sfn.TaskInput.fromObject({
+            id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+            userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
+            filepath: sfn.JsonPath.stringAt('$.path.filepath'),
+            requestContext: {
+              requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'), // sfn.JsonPath.stringAt('$.requestContext.requestId'),
+              domainName: sfn.JsonPath.stringAt('$.header.Host'),
+            },
+          }),
+        }),
+      ),
+      stateMachineType: sfn.StateMachineType.EXPRESS,
+    });
+
+    /*-------------------------------
      * Set up API Gateway routes
      -------------------------------*/
 
@@ -254,10 +280,58 @@ export class MyStack extends Stack {
     api.root
       .addResource('download')
       .addResource('{filepath+}')
-      .addMethod('GET', new apigateway.LambdaIntegration(downloadFunction), {
-        authorizationType: apigateway.AuthorizationType.CUSTOM,
-        authorizer,
-      });
+      .addMethod(
+        'GET',
+        apigateway.StepFunctionsIntegration.startExecution(downloadStateMachine, {
+          headers: true,
+          authorizer: true,
+          passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_TEMPLATES,
+          integrationResponses: [
+            {
+              statusCode: '400',
+              selectionPattern: '4\\d{2}',
+              responseTemplates: {
+                'application/json': '{"error": "Bad request!"}',
+              },
+            },
+            {
+              statusCode: '500',
+              selectionPattern: '5\\d{2}',
+              responseTemplates: {
+                'application/json': '"error": $input.path(\'$.error\')',
+              },
+            },
+            {
+              statusCode: '200',
+              selectionPattern: '2\\d{2}',
+              responseTemplates: {
+                'application/json':
+                  ' \
+                #set($root = $util.parseJson($input.path(\'$.output\')))\
+                #if($input.path(\'$.status\').toString().equals("FAILED"))\
+                #set($context.responseOverride.status = 500)\
+                {\
+                "error": "$input.path(\'$.error\')",\
+                "cause": "$input.path(\'$.cause\')"\
+                }\
+                #elseif($root.statusCode.toString().equals("302") || $root.statusCode.toString().equals("307"))\
+                #set($context.responseOverride.status = $root.statusCode)\
+                #set($context.responseOverride.header.content-type = "text/html")\
+                #set($context.responseOverride.header.Set-Cookie = "$root.headers.Set-Cookie")\
+                #set($context.responseOverride.header.Location = "$root.headers.Location")\
+                #else\
+                #set($context.responseOverride.status = $root.statusCode)\
+                $input.path(\'$.output\')\
+                #end',
+              },
+            },
+          ],
+        }),
+        {
+          authorizationType: apigateway.AuthorizationType.CUSTOM,
+          authorizer,
+        },
+      );
 
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
