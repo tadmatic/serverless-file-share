@@ -238,6 +238,7 @@ export class MyStack extends Stack {
                 #set($context.responseOverride.header.Set-Cookie = \"$root.headers.Set-Cookie\")\
                 #set($context.responseOverride.header.Location = \"$root.headers.Location\")\
                 #else\
+                #set($context.responseOverride.status = $root.statusCode)\
                 $input.path('$.output')\
                 #end"
             }
