@@ -221,6 +221,20 @@ export class MyStack extends Stack {
         authorizer:true,
         integrationResponses:[
           {
+            statusCode: "400",
+            selectionPattern :"4\\d{2}",
+            responseTemplates: {
+              "application/json":"{\"error\": \"Bad request!\"}"
+            }
+          },
+          {
+            statusCode: "500",
+            selectionPattern :"5\\d{2}",
+            responseTemplates: {
+              "application/json":"\"error\": $input.path('$.error')"
+            }
+          },          
+          {
             statusCode: "200",
             selectionPattern :"2\\d{2}",
             responseTemplates: {
