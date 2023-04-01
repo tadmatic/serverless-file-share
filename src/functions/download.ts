@@ -34,10 +34,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
 
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: 'File path parameter is missing' }),
-      headers: {
-        "Content-Type": "text/plain"
-      }
+      body: JSON.stringify({ message: 'File path parameter is missing' })
     };
   }
 
@@ -61,8 +58,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
       body: '',
       headers: {
         'Set-Cookie': `code_verifier=${codeVerifier}; Path=/; Secure; HttpOnly; SameSite=Lax`,
-        "Content-Type": "text/plain",
-        Location: authUrl,
+        Location: authUrl
       },
     };
   }
@@ -79,9 +75,6 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
   //const id = event.id; // request id is empty
   event.timestamp = new Date().toISOString();
   event.username = user.Username;
-  //const filepath = event.filepath;
-  //const downloadRequest: DownloadRequest = { id, username, filepath, timestamp, presignedUrl };
-
   const putParams = { TableName: TABLE_NAME, Item: event };
   await dynamodb.put(putParams).promise();
 
@@ -93,8 +86,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResul
   return {
     statusCode: 307,
     headers: {
-      Location: event.presignedUrl,
-      "Content-Type": "text/plain"
+      Location: event.presignedUrl
     },
     body: '',
  };

@@ -218,20 +218,34 @@ export class MyStack extends Stack {
       .addResource('{filepath+}')
       .addMethod('GET', apigateway.StepFunctionsIntegration.startExecution(downloadStateMachine, {
         headers:true,
-        authorizer:true
+        authorizer:true,
+        integrationResponses:[
+          {
+            statusCode: "200",
+            selectionPattern :"2\\d{2}",
+            responseTemplates: {
+                "application/json":" \
+                #set($root = $util.parseJson($input.path('$.output')))\
+                #if($input.path('$.status').toString().equals(\"FAILED\"))\
+                #set($context.responseOverride.status = 500)\
+                {\
+                \"error\": \"$input.path('$.error')\",\
+                \"cause\": \"$input.path('$.cause')\"\
+                }\
+                #elseif($root.statusCode.toString().equals(\"302\") || $root.statusCode.toString().equals(\"307\"))\
+                #set($context.responseOverride.status = $root.statusCode)\
+                #set($context.responseOverride.header.content-type = \"text/html\")\
+                #set($context.responseOverride.header.Set-Cookie = \"$root.headers.Set-Cookie\")\
+                #set($context.responseOverride.header.Location = \"$root.headers.Location\")\
+                #else\
+                $input.path('$.output')\
+                #end"
+            }
+          }
+        ]
       }));
-      /* //TODO ie to fix the response mapping
-      const responseModel = api.addModel('Response', {
-        schema: {
-          type: apigateway.JsonSchemaType.STRING
-        }
-      });
-      resource.addMethodResponse({statusCode:"200", responseModels:{"text/plain":responseModel}});
-      resource.addMethodResponse({statusCode:"307", responseModels:{"text/plain":responseModel}})
-      resource.addMethodResponse({statusCode:"302", responseModels:{"text/plain":responseModel}})
-      */
     
-    // Define the /auth_callback route
+      // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
 
     // Define the /login route
