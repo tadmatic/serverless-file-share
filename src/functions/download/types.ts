@@ -1,12 +1,3 @@
-export interface IDownloadResponse{
-    statusCode: number;
-    body?: string;
-    headers?: {
-      'Set-Cookie'?: string;
-      Location: string;
-    }
-}
-
 export interface IDownload {
     id: string;
     userId: string;
@@ -17,5 +8,12 @@ export interface IDownload {
       requestId: string;
       domainName: string;
     };  
-    responseContext: IDownloadResponse;
+    responseContext: { 
+      statusCode: number;
+      body?: string;
+      headers?: {
+        'Set-Cookie'?: string;
+        Location: string;
+      }
+    }
 }
