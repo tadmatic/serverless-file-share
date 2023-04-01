@@ -274,6 +274,9 @@ export class MyStack extends Stack {
             requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
             domainName: sfn.JsonPath.stringAt('$.header.Host'),
           },
+          responseContext: {
+            statusCode: 200 //ie: need to find a better way
+          }
         })
     });
     const isDownloadEligible = new sfn.Choice(this, 'Is Eligible?');

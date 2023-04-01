@@ -10,10 +10,6 @@ import { Console } from 'console';
 const lambdaHandler = async (event: IDownload): Promise<IDownload> => {
   const { filepath, userId } = event;
 
-  event.responseContext = {
-    statusCode: 200
-  }
-
   // 1. validate file path
   if (!filepath) {
     logger.error(`File path parameter is missing: ${event.filepath}`);
