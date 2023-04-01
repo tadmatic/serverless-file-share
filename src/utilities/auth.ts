@@ -7,6 +7,7 @@ import { URLSearchParams } from 'url';
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../utilities/observability';
+import { IDownload } from '../functions/download/types';
 
 // Constants
 export const COGNITO_BASE_URL = process.env.COGNITO_BASE_URL ?? '';
@@ -56,12 +57,12 @@ export interface DownloadEvent {
 }
 
 // TODO: pass API url as environment variable to lambda so below 2 functions are not required
-export const getRedirectUri = (event: APIGatewayProxyEvent | DownloadEvent): string => {
+export const getRedirectUri = (event: APIGatewayProxyEvent | DownloadEvent | IDownload): string => {
   // use current domain
   return `https://${event.requestContext.domainName}/prod/auth_callback`;
 };
 
-export const getLogoutUri = (event: APIGatewayProxyEvent | DownloadEvent): string => {
+export const getLogoutUri = (event: APIGatewayProxyEvent | DownloadEvent | IDownload): string => {
   // use current domain
   return `https://${event.requestContext.domainName}/prod/logout_callback`;
 };

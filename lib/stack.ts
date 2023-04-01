@@ -13,6 +13,7 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { TaskInput } from 'aws-cdk-lib/aws-stepfunctions';
 import { LambdaInvoke, Mode } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
+import * as fs from "fs";
 
 // get application name from package.json
 import * as packageJson from '../package.json';
@@ -172,16 +173,27 @@ export class MyStack extends Stack {
     };
 
     // Create a Lambda function to handle download requests
-    const downloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'DownloadFunction', {
-      entry: './src/functions/download.ts',
+    const startDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'startDownloadFunction', {
+      entry: './src/functions/download/start.ts',
       ...functionSettings,
     });
 
-    // Grant the Lambda function read access to the S3 bucket
-    bucket.grantRead(downloadFunction);
+    const generateDownloadURLFunction = new aws_lambda_nodejs.NodejsFunction(this, 'generateDownloadURLFunction', {
+      entry: './src/functions/download/url.ts',
+      ...functionSettings,
+    });
+    bucket.grantRead(generateDownloadURLFunction);
 
-    // Grant the Lambda function write access to the DynamoDB table
-    table.grantWriteData(downloadFunction);
+    const recordDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordDownloadFunction', {
+      entry: './src/functions/download/record.ts',
+      ...functionSettings,
+    });
+    table.grantWriteData(recordDownloadFunction);
+
+    const endDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endDownloadFunction', {
+      entry: './src/functions/download/end.ts',
+      ...functionSettings,
+    });
 
     // Create a Lambda function to handle Cognito auth callback
     const authCallbackFunction = new aws_lambda_nodejs.NodejsFunction(this, 'AuthCallbackFunction', {
@@ -249,26 +261,39 @@ export class MyStack extends Stack {
     });
 
     /*-------------------------------
-     * Set up step functions
-     -------------------------------*/
+     * Set up download step function
+     -------------------------------*/ 
+     const startDownloadInvocation = new LambdaInvoke(this, 'Start Download', {
+        lambdaFunction: startDownloadFunction,
+        payloadResponseOnly: true,
+        payload: sfn.TaskInput.fromObject({
+          id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+          userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
+          filepath: sfn.JsonPath.stringAt('$.path.filepath'),
+          requestContext: {
+            requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+            domainName: sfn.JsonPath.stringAt('$.header.Host'),
+          },
+        })
+    });
+    const isDownloadEligible = new sfn.Choice(this, 'Is Eligible?');
+    const generateDownloadURLInvocation = new LambdaInvoke(this, 'Generate URL', {lambdaFunction:generateDownloadURLFunction, outputPath: '$.Payload'});
+    const recordDownloadInvocation = new LambdaInvoke(this, 'Record Download', {lambdaFunction:recordDownloadFunction, outputPath: '$.Payload'});
+    const endDownloadInvocation = new LambdaInvoke(this, 'End Download', {lambdaFunction:endDownloadFunction, outputPath: '$.Payload'});
 
-    // Create download state machine
-    const downloadStateMachine = new sfn.StateMachine(this, 'CDKStateMachine', {
-      definition: sfn.Chain.start(
-        new LambdaInvoke(this, 'downloadTask', {
-          lambdaFunction: downloadFunction,
-          payloadResponseOnly: true,
-          payload: sfn.TaskInput.fromObject({
-            id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
-            userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
-            filepath: sfn.JsonPath.stringAt('$.path.filepath'),
-            requestContext: {
-              requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'), // sfn.JsonPath.stringAt('$.requestContext.requestId'),
-              domainName: sfn.JsonPath.stringAt('$.header.Host'),
-            },
-          }),
-        }),
-      ),
+    const downloadChain = sfn.Chain
+                            .start(startDownloadInvocation)
+                            .next(
+                              isDownloadEligible
+                                  .when(sfn.Condition.numberEquals('$.responseContext.statusCode', 200),
+                                              recordDownloadInvocation
+                                        .next(generateDownloadURLInvocation)
+                                        .next(endDownloadInvocation))
+                                  .otherwise(endDownloadInvocation)
+                              );
+
+    const downloadStateMachine = new sfn.StateMachine(this, 'DownloadStateMachine', {
+      definition: downloadChain,
       stateMachineType: sfn.StateMachineType.EXPRESS,
     });
 
