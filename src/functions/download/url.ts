@@ -3,7 +3,7 @@ import { logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
 
-import { DownloadEvent } from './types';
+import { DownloadEvent } from '../../utilities/types';
 import { logger, metrics, tracer } from '../../utilities/observability';
 import { createPresignedUrl } from '../../utilities/s3';
 

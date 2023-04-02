@@ -3,11 +3,11 @@ import { logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
 
-import { ShareEvent } from './types';
+import { ExternalShareEvent } from '../../utilities/types';
 import { logger, metrics, tracer } from '../../utilities/observability';
 import { generateAuthUrl, getRedirectUri } from '../../utilities/auth';
 
-const lambdaHandler = async (event: ShareEvent): Promise<ShareEvent> => {
+const lambdaHandler = async (event: ExternalShareEvent): Promise<ExternalShareEvent> => {
    const { userId } = event;
 
   // If no valid user found, redirect to login page

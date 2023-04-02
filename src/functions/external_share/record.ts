@@ -2,20 +2,16 @@ import { injectLambdaContext } from '@aws-lambda-powertools/logger';
 import { MetricUnits, logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
-import * as AWS from 'aws-sdk';
 
-import { DownloadEvent } from '../../utilities/types';
 import { logger, metrics, tracer } from '../../utilities/observability';
-import { recordDownload } from '../../utilities/dynamodb';
+import { recordShare } from '../../utilities/dynamodb';
+import { ExternalShareEvent } from '../../utilities/types';
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
-const TABLE_NAME = process.env.TABLE_NAME ?? '';
-
-const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
-  const { filepath, userId } = event;
+const lambdaHandler = async (event: ExternalShareEvent): Promise<ExternalShareEvent> => {
+  const { filepath, userId, shareUserId, maxNumberOfDownloads, presignedUrl } = event;
 
   // Record the download request in DynamoDB
-  await recordDownload({ filepath, userId });
+  await recordShare({filepath, ownerUserId:userId, shareUserId, maxNumberOfDownloads:maxNumberOfDownloads.toString(), type:'external', presignedUrl});
 
   // Log download request metric to Cloudwatch
   metrics.addMetric('DownloadRequest', MetricUnits.Count, 1);

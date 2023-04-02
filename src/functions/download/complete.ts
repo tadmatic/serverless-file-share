@@ -4,7 +4,7 @@ import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
 import { APIGatewayProxyResult } from 'aws-lambda';
 
-import { DownloadEvent } from './types';
+import { DownloadEvent } from '../../utilities/types';
 import { logger, metrics, tracer } from '../../utilities/observability';
 
 const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResult> => {

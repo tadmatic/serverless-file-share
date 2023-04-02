@@ -170,26 +170,26 @@ export class MyStack extends Stack {
       timeout: Duration.seconds(30),
     };
     
-    // Create a Lambda function to handle share requests
+    // Create a Lambda function to handle external share requests
     const startShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'startShareFunction', {
-      entry: './src/functions/share/process.ts',
+      entry: './src/functions/external_share/process.ts',
       ...functionSettings,
     });
     const generateShareURLFunction = new aws_lambda_nodejs.NodejsFunction(this, 'generateShareURLFunction', {
-      entry: './src/functions/share/url.ts',
+      entry: './src/functions/external_share/url.ts',
       ...functionSettings,
     });
     const recordShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordShareFunction', {
-      entry: './src/functions/share/record.ts',
+      entry: './src/functions/external_share/record.ts',
       ...functionSettings,
     });
     table.grantWriteData(recordShareFunction);
     const notifyShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'notifyShareFunction', {
-      entry: './src/functions/share/notify.ts',
+      entry: './src/functions/external_share/notify.ts',
       ...functionSettings,
     });
     const endShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endShareFunction', {
-      entry: './src/functions/share/complete.ts',
+      entry: './src/functions/external_share/complete.ts',
       ...functionSettings,
     });
 
@@ -207,6 +207,7 @@ export class MyStack extends Stack {
       ...functionSettings,
     });
     bucket.grantRead(generateDownloadURLFunction);
+    table.grantReadWriteData(generateDownloadURLFunction);
     const recordDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordDownloadFunction', {
       entry: './src/functions/download/record.ts',
       ...functionSettings,
@@ -283,7 +284,7 @@ export class MyStack extends Stack {
     });
 
     /*-------------------------------
-     * Set up Share step function
+     * Set up External Share step function
      -------------------------------*/
      const startShareInvocation = new LambdaInvoke(this, 'Validate Share', {
       lambdaFunction: startShareFunction,
@@ -291,8 +292,8 @@ export class MyStack extends Stack {
       payload: sfn.TaskInput.fromObject({
         id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
         userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),        
-        externalUrl: sfn.JsonPath.stringAt('$.querystring.url'),
-        emailAddress: sfn.JsonPath.stringAt('$.querystring.email'),
+        presignedUrl: sfn.JsonPath.stringAt('$.querystring.url'),
+        shareUserId: sfn.JsonPath.stringAt('$.querystring.email'),
         maxNumberOfDownloads: sfn.JsonPath.stringAt('$.querystring.downloads'),
         notifyByEmail: sfn.JsonPath.stringAt('$.querystring.notify'),
         requestContext: {

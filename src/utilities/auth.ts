@@ -6,9 +6,8 @@ import { generateChallenge } from 'pkce-challenge';
 import { URLSearchParams } from 'url';
 import { v4 as uuid } from 'uuid';
 
-import { DownloadEvent } from '../functions/download/types';
+import { FileShareEvent } from './types';
 import { logger } from '../utilities/observability';
-import { ShareEvent } from '../functions/share/types';
 
 // Constants
 export const COGNITO_BASE_URL = process.env.COGNITO_BASE_URL ?? '';
@@ -49,16 +48,16 @@ export const getUserDetailsViaAccessToken = async (token: string): Promise<User 
 };
 
 // TODO: pass API url as environment variable to lambda so below 3 functions are not required
-export const getApiUri = (event: APIGatewayProxyEvent | DownloadEvent | ShareEvent, path: string): string => {
+export const getApiUri = (event: APIGatewayProxyEvent | FileShareEvent, path: string): string => {
   // use current domain
   return `https://${event.requestContext.domainName}/prod${path}`;
 };
 
-export const getRedirectUri = (event: APIGatewayProxyEvent | DownloadEvent | ShareEvent): string => {
+export const getRedirectUri = (event: APIGatewayProxyEvent | FileShareEvent): string => {
   return getApiUri(event, "/auth_callback");
 };
 
-export const getLogoutUri = (event: APIGatewayProxyEvent | DownloadEvent | ShareEvent): string => {
+export const getLogoutUri = (event: APIGatewayProxyEvent | FileShareEvent): string => {
   return getApiUri(event, "/logout_callback");
 };
 
