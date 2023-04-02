@@ -176,16 +176,16 @@ export class MyStack extends Stack {
       ...functionSettings,
     });
 
-    const generateShareURLFunction = new aws_lambda_nodejs.NodejsFunction(this, 'generateShareURLFunction', {
-      entry: './src/functions/share/url.ts',
-      ...functionSettings,
-    });
-
     const recordShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordShareFunction', {
       entry: './src/functions/share/record.ts',
       ...functionSettings,
     });
     table.grantWriteData(recordShareFunction);
+
+    const notifyShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'notifyShareFunction', {
+      entry: './src/functions/share/notify.ts',
+      ...functionSettings,
+    });
 
     const endShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endShareFunction', {
       entry: './src/functions/share/complete.ts',
@@ -294,6 +294,10 @@ export class MyStack extends Stack {
       payload: sfn.TaskInput.fromObject({
         id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
         userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
+        url: sfn.JsonPath.stringAt('$.querystring.url'),
+        email: sfn.JsonPath.stringAt('$.querystring.email'),
+        downloads: sfn.JsonPath.stringAt('$.querystring.downloads'),
+        notify: sfn.JsonPath.stringAt('$.querystring.notify'),
         requestContext: {
           requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
           traceId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
@@ -305,11 +309,11 @@ export class MyStack extends Stack {
       }),
     });
     const isShareValid = new sfn.Choice(this, 'Is Share Valid?');
-    const generateShareURLInvocation = new LambdaInvoke(this, 'Generate Share URL', {
-      lambdaFunction: generateShareURLFunction,
+    const recordShareInvocation = new LambdaInvoke(this, 'Record Share', {
+      lambdaFunction: recordShareFunction,
       outputPath: '$.Payload',
     });
-    const recordShareInvocation = new LambdaInvoke(this, 'Record Share', {
+    const notifyShareInvocation = new LambdaInvoke(this, 'Notify Share', {
       lambdaFunction: recordShareFunction,
       outputPath: '$.Payload',
     });
@@ -322,7 +326,7 @@ export class MyStack extends Stack {
       isShareValid
         .when(
           sfn.Condition.numberEquals('$.responseContext.statusCode', 200),
-                recordShareInvocation.next(generateShareURLInvocation).next(endShareInvocation))
+            recordShareInvocation.next(notifyShareInvocation).next(endShareInvocation))
         .otherwise(endShareInvocation),
     );
 

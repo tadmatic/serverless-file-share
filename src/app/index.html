@@ -133,16 +133,16 @@
   <body>
     <div class="main-block">
       <h1>Secure Share</h1>
-      <form action="https://6nmymc7pnl.execute-api.ap-southeast-2.amazonaws.com/prod/share" method="post">
+      <form action="https://6nmymc7pnl.execute-api.ap-southeast-2.amazonaws.com/prod/share">
         <hr>
-        <label id="icon" for="name"><i class="fas fa-link"></i></label>
-        <input type="text" name="name" id="url" placeholder="Pre-signed URL" required/>
-        <label id="icon" for="name"><i class="fas fa-envelope"></i></label>
-        <input type="text" name="name" id="email" placeholder="Email" required/>
-        <label id="icon" for="name"><i class="fas fa-unlock-alt"></i></label>
-        <input type="text" name="name" id="downloads" placeholder="Downloads" required/>
+        <label id="icon" for="url"><i class="fas fa-link"></i></label>
+        <input type="text" name="url" id="url" placeholder="Pre-signed URL" required/>
+        <label id="icon" for="email"><i class="fas fa-envelope"></i></label>
+        <input type="text" name="email" id="email" placeholder="Email" required/>
+        <label id="icon" for="downloads"><i class="fas fa-unlock-alt"></i></label>
+        <input type="text" name="downloads" id="downloads" placeholder="Downloads" required/>
         <hr>
-        <input type="checkbox"  checked="checked" name="remember"> Notify
+        <input type="checkbox"  checked="checked" name="notify"> Notify
         </label>
         <hr>
           <button type="submit" href="/">Submit</button>
