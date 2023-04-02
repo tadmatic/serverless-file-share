@@ -7,7 +7,7 @@ import { DownloadEvent } from './types';
 import { logger, metrics, tracer } from '../../utilities/observability';
 
 const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
-  const { filepath, userId } = event;
+  // const { filepath, userId } = event;
 
   // Check if user is allowed to download (e.g. check download quota from dynamodb)
 

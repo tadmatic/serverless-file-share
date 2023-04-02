@@ -1,20 +1,18 @@
 import * as cdk from 'aws-cdk-lib';
 import { Duration, RemovalPolicy, Stack, StackProps, aws_lambda_nodejs } from 'aws-cdk-lib';
-import { aws_glue as glue } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as athena from 'aws-cdk-lib/aws-athena';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as glue from 'aws-cdk-lib/aws-glue';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
-import { TaskInput } from 'aws-cdk-lib/aws-stepfunctions';
-import { LambdaInvoke, Mode } from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import { LambdaInvoke } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
-import * as fs from "fs";
-
+  
 // get application name from package.json
 import * as packageJson from '../package.json';
 const APPLICATION_NAME = packageJson.name;
