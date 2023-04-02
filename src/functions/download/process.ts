@@ -17,6 +17,9 @@ const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
     event.responseContext = {
       statusCode: 400,
       body: JSON.stringify({ message: 'File path parameter is missing' }),
+      headers: {
+        "X-Amzn-Trace-Id": event.requestContext.traceId
+      },
     };
   }
 
@@ -35,6 +38,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
       headers: {
         'Set-Cookie': `code_verifier=${codeVerifier}; Path=/; Secure; HttpOnly; SameSite=Lax`,
         Location: authUrl,
+        "X-Amzn-Trace-Id": event.requestContext.traceId
       },
     };
   }

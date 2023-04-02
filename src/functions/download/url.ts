@@ -21,6 +21,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
     statusCode: 307,
     headers: {
       Location: presignedUrl,
+      "X-Amzn-Trace-Id" : event.requestContext.traceId
     },
     body: '',
   };

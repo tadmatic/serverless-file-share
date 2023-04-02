@@ -6,6 +6,7 @@ export interface DownloadEvent {
   presignedUrl: string;
   requestContext: {
     requestId: string;
+    traceId: string;
     domainName: string;
   };
   responseContext: {
@@ -13,7 +14,8 @@ export interface DownloadEvent {
     body?: string;
     headers?: {
       'Set-Cookie'?: string;
-      Location: string;
+      Location?: string;
+      "X-Amzn-Trace-Id"?: string;
     };
   };
 }
