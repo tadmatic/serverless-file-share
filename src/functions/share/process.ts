@@ -9,9 +9,6 @@ import { generateAuthUrl, getRedirectUri } from '../../utilities/auth';
 
 const lambdaHandler = async (event: ShareEvent): Promise<ShareEvent> => {
    const { userId } = event;
-   
-   console.log("----------------------- share:process");
-   console.log(event);
 
   // If no valid user found, redirect to login page
   if (!userId || userId === '') {

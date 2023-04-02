@@ -6,6 +6,7 @@ import * as AWS from 'aws-sdk';
 
 import { DownloadEvent } from './types';
 import { logger, metrics, tracer } from '../../utilities/observability';
+import { recordDownload } from '../../utilities/dynamodb';
 
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
@@ -14,19 +15,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
   const { filepath, userId } = event;
 
   // Record the download request in DynamoDB
-  const item = {
-    id: event.requestContext.requestId,
-    userId,
-    filepath,
-    timestamp: new Date().toISOString(),
-  };
-
-  const putParams = {
-    TableName: TABLE_NAME,
-    Item: item,
-  };
-
-  await dynamodb.put(putParams).promise();
+  await recordDownload({ filepath, userId });
 
   // Log download request metric to Cloudwatch
   metrics.addMetric('DownloadRequest', MetricUnits.Count, 1);

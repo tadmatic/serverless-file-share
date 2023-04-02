@@ -8,6 +8,7 @@ import { v4 as uuid } from 'uuid';
 
 import { DownloadEvent } from '../functions/download/types';
 import { logger } from '../utilities/observability';
+import { ShareEvent } from '../functions/share/types';
 
 // Constants
 export const COGNITO_BASE_URL = process.env.COGNITO_BASE_URL ?? '';
@@ -47,15 +48,18 @@ export const getUserDetailsViaAccessToken = async (token: string): Promise<User 
   }
 };
 
-// TODO: pass API url as environment variable to lambda so below 2 functions are not required
-export const getRedirectUri = (event: APIGatewayProxyEvent | DownloadEvent): string => {
+// TODO: pass API url as environment variable to lambda so below 3 functions are not required
+export const getApiUri = (event: APIGatewayProxyEvent | DownloadEvent | ShareEvent, path: string): string => {
   // use current domain
-  return `https://${event.requestContext.domainName}/prod/auth_callback`;
+  return `https://${event.requestContext.domainName}/prod${path}`;
 };
 
-export const getLogoutUri = (event: APIGatewayProxyEvent | DownloadEvent): string => {
-  // use current domain
-  return `https://${event.requestContext.domainName}/prod/logout_callback`;
+export const getRedirectUri = (event: APIGatewayProxyEvent | DownloadEvent | ShareEvent): string => {
+  return getApiUri(event, "/auth_callback");
+};
+
+export const getLogoutUri = (event: APIGatewayProxyEvent | DownloadEvent | ShareEvent): string => {
+  return getApiUri(event, "/logout_callback");
 };
 
 // Read cookie value from event headers

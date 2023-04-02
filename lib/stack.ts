@@ -61,8 +61,8 @@ export class MyStack extends Stack {
 
     // Create a DynamoDB table to record download requests
     const table = new dynamodb.Table(this, 'DownloadTable', {
-      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-      removalPolicy: RemovalPolicy.DESTROY,
+      partitionKey: { name: 'filepath', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'record', type: dynamodb.AttributeType.STRING },
     });
 
     /*-------------------------------
@@ -175,18 +175,19 @@ export class MyStack extends Stack {
       entry: './src/functions/share/process.ts',
       ...functionSettings,
     });
-
+    const generateShareURLFunction = new aws_lambda_nodejs.NodejsFunction(this, 'generateShareURLFunction', {
+      entry: './src/functions/share/url.ts',
+      ...functionSettings,
+    });
     const recordShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordShareFunction', {
       entry: './src/functions/share/record.ts',
       ...functionSettings,
     });
     table.grantWriteData(recordShareFunction);
-
     const notifyShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'notifyShareFunction', {
       entry: './src/functions/share/notify.ts',
       ...functionSettings,
     });
-
     const endShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endShareFunction', {
       entry: './src/functions/share/complete.ts',
       ...functionSettings,
@@ -197,24 +198,20 @@ export class MyStack extends Stack {
       entry: './src/functions/download/process.ts',
       ...functionSettings,
     });
-
     const eligibleDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'eligibleDownloadFunction', {
       entry: './src/functions/download/eligible.ts',
       ...functionSettings,
     });
-
     const generateDownloadURLFunction = new aws_lambda_nodejs.NodejsFunction(this, 'generateDownloadURLFunction', {
       entry: './src/functions/download/url.ts',
       ...functionSettings,
     });
     bucket.grantRead(generateDownloadURLFunction);
-
     const recordDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordDownloadFunction', {
       entry: './src/functions/download/record.ts',
       ...functionSettings,
     });
     table.grantWriteData(recordDownloadFunction);
-
     const endDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endDownloadFunction', {
       entry: './src/functions/download/complete.ts',
       ...functionSettings,
@@ -293,11 +290,11 @@ export class MyStack extends Stack {
       payloadResponseOnly: true,
       payload: sfn.TaskInput.fromObject({
         id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
-        userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
-        url: sfn.JsonPath.stringAt('$.querystring.url'),
-        email: sfn.JsonPath.stringAt('$.querystring.email'),
-        downloads: sfn.JsonPath.stringAt('$.querystring.downloads'),
-        notify: sfn.JsonPath.stringAt('$.querystring.notify'),
+        userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),        
+        externalUrl: sfn.JsonPath.stringAt('$.querystring.url'),
+        emailAddress: sfn.JsonPath.stringAt('$.querystring.email'),
+        maxNumberOfDownloads: sfn.JsonPath.stringAt('$.querystring.downloads'),
+        notifyByEmail: sfn.JsonPath.stringAt('$.querystring.notify'),
         requestContext: {
           requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
           traceId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
@@ -309,6 +306,10 @@ export class MyStack extends Stack {
       }),
     });
     const isShareValid = new sfn.Choice(this, 'Is Share Valid?');
+    const generateShareURLInvocation = new LambdaInvoke(this, 'Share URL', {
+      lambdaFunction: generateShareURLFunction,
+      outputPath: '$.Payload',
+    });
     const recordShareInvocation = new LambdaInvoke(this, 'Record Share', {
       lambdaFunction: recordShareFunction,
       outputPath: '$.Payload',
@@ -326,7 +327,7 @@ export class MyStack extends Stack {
       isShareValid
         .when(
           sfn.Condition.numberEquals('$.responseContext.statusCode', 200),
-            recordShareInvocation.next(notifyShareInvocation).next(endShareInvocation))
+            generateShareURLInvocation.next(recordShareInvocation).next(notifyShareInvocation).next(endShareInvocation))
         .otherwise(endShareInvocation),
     );
 
@@ -361,7 +362,7 @@ export class MyStack extends Stack {
       outputPath: '$.Payload',
     });
     const isDownloadEligible = new sfn.Choice(this, 'Is Download Eligible?');
-    const generateDownloadURLInvocation = new LambdaInvoke(this, 'Generate URL', {
+    const generateDownloadURLInvocation = new LambdaInvoke(this, 'Download URL', {
       lambdaFunction: generateDownloadURLFunction,
       outputPath: '$.Payload',
     });
@@ -400,45 +401,46 @@ export class MyStack extends Stack {
      -------------------------------*/
 
      // Define web integration response mapping templates
-     const webIntegrationResponse = Array<apigateway.IntegrationResponse>();
-     webIntegrationResponse.push({
-      statusCode: '400',
-      selectionPattern: '4\\d{2}',
-      responseTemplates: {
-        'application/json': '{"error": "Bad request!"}',
-      },
-     });
-     webIntegrationResponse.push({
-      statusCode: '500',
-      selectionPattern: '5\\d{2}',
-      responseTemplates: {
-        'application/json': '"error": $input.path(\'$.error\')',
-      },
-     });
-     webIntegrationResponse.push({
-      statusCode: '200',
-      selectionPattern: '2\\d{2}',
-      responseTemplates: {
-        'application/json':
-          ' \
-        #set($root = $util.parseJson($input.path(\'$.output\')))\
-        #if($input.path(\'$.status\').toString().equals("FAILED"))\
-        #set($context.responseOverride.status = 500)\
-        {\
-        "error": "$input.path(\'$.error\')",\
-        "cause": "$input.path(\'$.cause\')"\
-        }\
-        #elseif($root.statusCode.toString().equals("302") || $root.statusCode.toString().equals("307"))\
-        #set($context.responseOverride.status = $root.statusCode)\
-        #set($context.responseOverride.header.content-type = "text/html")\
-        #set($context.responseOverride.header.Set-Cookie = "$root.headers.Set-Cookie")\
-        #set($context.responseOverride.header.Location = "$root.headers.Location")\
-        #else\
-        #set($context.responseOverride.status = $root.statusCode)\
-        $input.path(\'$.output\')\
-        #end',
-      },
-     });     
+     const webIntegrationResponse : apigateway.IntegrationResponse[] = [
+      {
+        statusCode: '400',
+        selectionPattern: '4\\d{2}',
+        responseTemplates: {
+          'application/json': '{"error": "Bad request!"}',
+        },
+       },
+       {
+        statusCode: '500',
+        selectionPattern: '5\\d{2}',
+        responseTemplates: {
+          'application/json': '"error": $input.path(\'$.error\')',
+        },
+       },
+       {
+        statusCode: '200',
+        selectionPattern: '2\\d{2}',
+        responseTemplates: {
+          'application/json':
+            ' \
+          #set($root = $util.parseJson($input.path(\'$.output\')))\
+          #if($input.path(\'$.status\').toString().equals("FAILED"))\
+          #set($context.responseOverride.status = 500)\
+          {\
+          "error": "$input.path(\'$.error\')",\
+          "cause": "$input.path(\'$.cause\')"\
+          }\
+          #elseif($root.statusCode.toString().equals("302") || $root.statusCode.toString().equals("307"))\
+          #set($context.responseOverride.status = $root.statusCode)\
+          #set($context.responseOverride.header.content-type = "text/html")\
+          #set($context.responseOverride.header.Set-Cookie = "$root.headers.Set-Cookie")\
+          #set($context.responseOverride.header.Location = "$root.headers.Location")\
+          #else\
+          #set($context.responseOverride.status = $root.statusCode)\
+          $input.path(\'$.output\')\
+          #end',
+        },
+       }
+     ];
 
      // Define the "/share/" route
      api.root

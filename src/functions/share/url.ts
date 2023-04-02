@@ -5,16 +5,15 @@ import middy from '@middy/core';
 
 import { ShareEvent } from './types';
 import { logger, metrics, tracer } from '../../utilities/observability';
+import { getApiUri } from '../../utilities/auth';
 
 const lambdaHandler = async (event: ShareEvent): Promise<ShareEvent> => {
-  // const { filepath, userId } = event;
-  console.log("-------------------- event:");
-  console.log(event);
-
-  var url = event.shareUrl;
-
-  // Check if user is allowed to download (e.g. check download quota from dynamodb)
-
+  // parse external url
+  const path = new URL(event.externalUrl).pathname;
+  
+  // generate share url
+  event.shareUrl = new URL(getApiUri(event, `/download${path}`));
+  
   return event;
 };
 
