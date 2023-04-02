@@ -12,7 +12,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { LambdaInvoke } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
-  
+
 // get application name from package.json
 import * as packageJson from '../package.json';
 const APPLICATION_NAME = packageJson.name;
