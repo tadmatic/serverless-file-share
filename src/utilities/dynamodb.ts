@@ -1,4 +1,6 @@
 import * as AWS from 'aws-sdk';
+import { NIL } from 'uuid';
+import { unmarshall } from "@aws-sdk/util-dynamodb";
 
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
@@ -13,7 +15,7 @@ interface RecordDownloadRequest {
   userId: string;
 }
 
-interface ShareFileRequest {
+export interface ShareFileRequest {
   filepath: string;
   ownerUserId: string;
   shareUserId: string;
@@ -62,6 +64,9 @@ export const recordShare = async ({ filepath, ownerUserId, shareUserId, maxNumbe
     type,
     presignedUrl
   };
+
+  console.log('---------------- recordShare:');
+  console.log(item);
 
   const putParams = {
     TableName: TABLE_NAME,
@@ -126,6 +131,47 @@ export const isAllowedToDownload = async ({ filepath, userId }: CreateFileReques
     return false;
   }
 
+  shareRecord.presignedUrl;
   // If share record exists, check download quota
   return downloadRecords?.length < shareRecord.maxNumberOfDownloads;
+};
+
+
+// retrieve share request record
+export const getShareExternalUrl = async ({ filepath, userId }: CreateFileRequest) : Promise<String | undefined> => {
+  const params = {
+    TableName: TABLE_NAME,
+    KeyConditionExpression: '#pk = :filepath and begins_with(#sk, :userId)',
+    ExpressionAttributeNames: {
+      '#pk': 'filepath',
+      '#sk': 'record',
+    },
+    ExpressionAttributeValues: {
+      ':filepath': filepath,
+      ':userId': `${userId}#`,
+    },
+  };
+
+  const result = await dynamodb.query(params).promise();
+  
+  if (result.Count === 0) {
+    return undefined;
+  }
+
+  // TODO move to service/repo application architecture pattern
+  const record = `${userId}#${RECORD_TYPE_SHARE_PREFIX}`;
+
+  const item = result.Items?.find((r) => r.record === record);
+  console.log('----------------item:');
+  console.log(item);
+  console.log(item?.type);
+
+  if(item && item.type==="external"){
+    console.log('----------------url:');
+    console.log(item.presignedUrl);
+
+    return item.presignedUrl;
+  }
+
+  return undefined;
 };

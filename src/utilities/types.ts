@@ -26,7 +26,7 @@ export interface FileShareEvent extends BaseFileShareEvent{
 
 }
 
-interface BaseShareEvent extends FileShareEvent{
+export interface BaseShareEvent extends FileShareEvent{
   shareUserId: string;
   maxNumberOfDownloads: number;
   notifyByEmail:boolean;

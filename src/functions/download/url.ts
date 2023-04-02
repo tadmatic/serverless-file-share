@@ -6,21 +6,30 @@ import middy from '@middy/core';
 import { DownloadEvent } from '../../utilities/types';
 import { logger, metrics, tracer } from '../../utilities/observability';
 import { createPresignedUrl } from '../../utilities/s3';
+import internal = require('stream');
+import { Console } from 'console';
+import { getShareExternalUrl } from '../../utilities/dynamodb';
 
 const BUCKET_NAME = process.env.BUCKET_NAME ?? '';
 
 const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
-  const presignedUrl = await createPresignedUrl({
-    bucket: BUCKET_NAME,
-    key: event.filepath,
-    userId: event.userId,
-  });
+  
+  const { filepath, userId } = event;
+  
+  //1. retrieve eshare request from db
+  const externalShareUrl = await getShareExternalUrl({filepath, userId});
 
-  // Perform a server-side redirect to the presigned URL
+  event.presignedUrl = (externalShareUrl ??  await createPresignedUrl({
+      bucket: BUCKET_NAME,
+      key: event.filepath,
+      userId: event.userId,
+    })).toString();  
+
+    // Perform a server-side redirect to the presigned URL
   event.responseContext = {
     statusCode: 307,
     headers: {
-      Location: presignedUrl,
+      Location: event.presignedUrl,
       "X-Amzn-Trace-Id" : event.requestContext.traceId
     },
     body: '',

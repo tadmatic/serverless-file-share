@@ -9,10 +9,11 @@ import { getApiUri } from '../../utilities/auth';
 
 const lambdaHandler = async (event: ExternalShareEvent): Promise<ExternalShareEvent> => {
   // parse external url
-  event.filepath = new URL(event.presignedUrl).pathname;
-  
+  const pathname = new URL(event.presignedUrl).pathname;
+  event.filepath = pathname.substring(1, pathname.length);
+
   // generate share url
-  event.shareUrl = new URL(getApiUri(event, `/download${event.filepath}`));
+  event.shareUrl = new URL(getApiUri(event, `/download/${event.filepath}`));
 
   return event;
 };
