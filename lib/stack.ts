@@ -43,7 +43,7 @@ export class MyStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY, // TODO: change to retain
     });
-
+    
     // Create an S3 bucket to store the files to share/download
     const bucket = new s3.Bucket(this, 'DownloadBucket', {
       versioned: true,
@@ -54,7 +54,7 @@ export class MyStack extends Stack {
       serverAccessLogsBucket: loggingBucket,
       serverAccessLogsPrefix: 'access-logs/',
     });
-    
+
     /*-------------------------------
      * Set up Dynamo DB table
      -------------------------------*/
