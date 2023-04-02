@@ -12,7 +12,9 @@
     "deploy:prod": "dotenv -e .env.prod npx cdk deploy",
     "watch": "dotenv -e .env npx cdk watch",
     "local-invoke": "dotenv -e npm run build && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json",
-    "local-invoke:prod": "dotenv -e npm run build:prod && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json"
+    "local-invoke:prod": "dotenv -e npm run build:prod && sam local invoke ${1} --template cdk.out/${npm_package_name}.template.json",
+    "lint": "eslint .",
+    "postinstall": "npx husky install"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.86",
@@ -32,6 +34,7 @@
     "eslint-import-resolver-typescript": "^3.5.4",
     "eslint-plugin-import": "^2.27.5",
     "eslint-plugin-prettier": "^4.2.1",
+    "husky": "^8.0.3",
     "jest": "^29.5.0",
     "prettier": "^2.8.4",
     "ts-jest": "^29.0.5",
