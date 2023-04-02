@@ -1,6 +1,5 @@
 import * as AWS from 'aws-sdk';
 import { NIL } from 'uuid';
-import { unmarshall } from "@aws-sdk/util-dynamodb";
 
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
@@ -162,14 +161,9 @@ export const getShareExternalUrl = async ({ filepath, userId }: CreateFileReques
   const record = `${userId}#${RECORD_TYPE_SHARE_PREFIX}`;
 
   const item = result.Items?.find((r) => r.record === record);
-  console.log('----------------item:');
-  console.log(item);
-  console.log(item?.type);
-
+  
   if(item && item.type==="external"){
-    console.log('----------------url:');
     console.log(item.presignedUrl);
-
     return item.presignedUrl;
   }
 
