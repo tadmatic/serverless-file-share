@@ -63,7 +63,8 @@ export class MyStack extends Stack {
 
     // Create a DynamoDB table to record download requests
     const table = new dynamodb.Table(this, 'DownloadTable', {
-      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      partitionKey: { name: 'filepath', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'record', type: dynamodb.AttributeType.STRING },
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
