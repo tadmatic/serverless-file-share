@@ -18,6 +18,7 @@ interface ShareFileRequest {
   ownerUserId: string;
   shareUserId: string;
   maxNumberOfDownloads: string;
+  type?: 'internal' | 'external';
 }
 
 interface CreateFileRequest {
@@ -46,7 +47,7 @@ export const recordDownload = async ({ filepath, userId }: RecordDownloadRequest
 };
 
 // Record a record when sharing a user shares file with another user
-export const shareFile = async ({ filepath, ownerUserId, shareUserId, maxNumberOfDownloads }: ShareFileRequest) => {
+export const shareFile = async ({ filepath, ownerUserId, shareUserId, maxNumberOfDownloads, type }: ShareFileRequest) => {
   // get current date
   const timestamp = new Date().toISOString();
 
@@ -57,6 +58,7 @@ export const shareFile = async ({ filepath, ownerUserId, shareUserId, maxNumberO
     shareUserId,
     maxNumberOfDownloads,
     timestamp,
+    type
   };
 
   const putParams = {

@@ -13,7 +13,7 @@ const lambdaHandler = async (event: ShareEvent): Promise<ShareEvent> => {
   
   // generate share url
   event.shareUrl = new URL(getApiUri(event, `/download${path}`));
-  
+
   return event;
 };
 
