@@ -6,6 +6,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
@@ -183,6 +184,7 @@ export class MyStack extends Stack {
       entry: './src/functions/download/eligible.ts',
       ...functionSettings,
     });
+    table.grantReadData(eligibleDownloadFunction);
 
     const generateDownloadURLFunction = new aws_lambda_nodejs.NodejsFunction(this, 'generateDownloadURLFunction', {
       entry: './src/functions/download/url.ts',
@@ -224,6 +226,28 @@ export class MyStack extends Stack {
       entry: './src/functions/logoutCallback.ts',
       ...functionSettings,
     });
+
+    // Create a Lambda function to handle sharing requests
+    const shareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'ShareFunction', {
+      entry: './src/functions/share.ts',
+      ...functionSettings,
+    });
+    table.grantWriteData(shareFunction);
+
+    // Create a Lambda function to handle upload requests
+    const uploadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'UploadFunction', {
+      entry: './src/functions/upload.ts',
+      ...functionSettings,
+    });
+    bucket.grantReadWrite(uploadFunction);
+
+    // Create a Lambda function to handle events from s3 when a file is uploaded
+    const processUploadEventFunction = new aws_lambda_nodejs.NodejsFunction(this, 'ProcessUploadEventFunction', {
+      entry: './src/functions/processUploadEvent.ts',
+      ...functionSettings,
+    });
+    bucket.grantRead(processUploadEventFunction);
+    table.grantWriteData(processUploadEventFunction);
 
     // Add the required IAM permissions for the authorizer function
     logoutFunction.addToRolePolicy(
@@ -326,6 +350,15 @@ export class MyStack extends Stack {
     });
 
     /*-------------------------------
+     * Set up S3 event notifications to trigger Lambda when new file is uploaded
+     -------------------------------*/
+    const s3EventSource = new lambdaEventSources.S3EventSource(bucket, {
+      events: [s3.EventType.OBJECT_CREATED],
+    });
+
+    processUploadEventFunction.addEventSource(s3EventSource);
+
+    /*-------------------------------
      * Set up API Gateway routes
      -------------------------------*/
 
@@ -386,6 +419,24 @@ export class MyStack extends Stack {
         },
       );
 
+    // Define the /upload route
+    api.root
+      .addResource('upload')
+      .addResource('{filepath+}')
+      .addMethod('GET', new apigateway.LambdaIntegration(uploadFunction), {
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer,
+      });
+
+    // Define the /share route
+    api.root
+      .addResource('share')
+      .addResource('{filepath+}')
+      .addMethod('POST', new apigateway.LambdaIntegration(shareFunction), {
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer,
+      });
+
     // Define the /auth_callback route
     api.root.addResource('auth_callback').addMethod('GET', new apigateway.LambdaIntegration(authCallbackFunction));
 
@@ -436,7 +487,7 @@ export class MyStack extends Stack {
       sqlQuery: `
         SELECT
             request_datetime,
-            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-user-id=([^& ]+)', 1) as user_id,
+            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-meta-user-id=([^& ]+)', 1) as user_id,
             key as filepath,
             bytes_sent
         FROM

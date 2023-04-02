@@ -18,6 +18,7 @@ interface ShareFileRequest {
   ownerUserId: string;
   shareUserId: string;
   maxNumberOfDownloads: string;
+  type?: 'internal' | 'external';
 }
 
 interface CreateFileRequest {
@@ -46,7 +47,13 @@ export const recordDownload = async ({ filepath, userId }: RecordDownloadRequest
 };
 
 // Record a record when sharing a user shares file with another user
-export const shareFile = async ({ filepath, ownerUserId, shareUserId, maxNumberOfDownloads }: ShareFileRequest) => {
+export const recordShareFileRequest = async ({
+  filepath,
+  ownerUserId,
+  shareUserId,
+  maxNumberOfDownloads,
+  type = 'internal',
+}: ShareFileRequest) => {
   // get current date
   const timestamp = new Date().toISOString();
 
@@ -57,6 +64,7 @@ export const shareFile = async ({ filepath, ownerUserId, shareUserId, maxNumberO
     shareUserId,
     maxNumberOfDownloads,
     timestamp,
+    type,
   };
 
   const putParams = {
@@ -68,7 +76,7 @@ export const shareFile = async ({ filepath, ownerUserId, shareUserId, maxNumberO
 };
 
 // Create a record when a new file is uploaded by a user
-export const createFile = async ({ filepath, userId }: CreateFileRequest) => {
+export const recordFileOwner = async ({ filepath, userId }: CreateFileRequest) => {
   // get current date
   const timestamp = new Date().toISOString();
 
@@ -111,7 +119,7 @@ export const isAllowedToDownload = async ({ filepath, userId }: CreateFileReques
   // TODO move to service/repo application architecture pattern
   const ownerRecord = result.Items?.find((r) => r.record === `${userId}#${RECORD_TYPE_OWNER_PREFIX}`);
   const shareRecord = result.Items?.find((r) => r.record === `${userId}#${RECORD_TYPE_SHARE_PREFIX}`);
-  const downloadRecords = result.Items?.filter((r) => r.record === `${userId}#${RECORD_TYPE_SHARE_PREFIX}`) ?? [];
+  const downloadRecords = result.Items?.filter((r) => r.record === `${userId}#${RECORD_TYPE_DOWNLOAD_PREFIX}`) ?? [];
 
   if (ownerRecord) {
     // user is the owner of the file

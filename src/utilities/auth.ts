@@ -75,6 +75,15 @@ export const getCookie = (
   return undefined;
 };
 
+// Read bearer token from header
+export const getBearerToken = (event: APIGatewayProxyEvent | APIGatewayRequestAuthorizerEvent): string | undefined => {
+  const authorization = event.headers?.Authorization;
+  if (authorization) {
+    return authorization.replace('Bearer ', '');
+  }
+  return undefined;
+};
+
 // Generate Cognito login url
 export const generateAuthUrl = (redirectUri: string, filepath?: string) => {
   // Generate a unique PKCE code verifier and challenge

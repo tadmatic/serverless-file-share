@@ -4,12 +4,18 @@ import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
 
 import { DownloadEvent } from './types';
+import { isAllowedToDownload } from '../../utilities/dynamodb';
 import { logger, metrics, tracer } from '../../utilities/observability';
 
 const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
-  // const { filepath, userId } = event;
+  const { filepath, userId } = event;
 
-  // Check if user is allowed to download (e.g. check download quota from dynamodb)
+  if (!(await isAllowedToDownload({ filepath, userId }))) {
+    event.responseContext = {
+      statusCode: 400,
+      body: 'Access denied',
+    };
+  }
 
   return event;
 };

@@ -4,11 +4,12 @@ import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
 import { APIGatewayAuthorizerResult, APIGatewayRequestAuthorizerEvent } from 'aws-lambda';
 
-import { getCookie, getUserDetailsViaAccessToken } from '../utilities/auth';
+import { getBearerToken, getCookie, getUserDetailsViaAccessToken } from '../utilities/auth';
 import { logger, metrics, tracer } from '../utilities/observability';
 
 const lambdaHandler = async (event: APIGatewayRequestAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
-  const token = getCookie(event, 'access_token');
+  const headerToken = getBearerToken(event);
+  const token = headerToken ? headerToken : getCookie(event, 'access_token');
 
   if (token) {
     const user = await getUserDetailsViaAccessToken(token);
