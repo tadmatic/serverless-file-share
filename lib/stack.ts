@@ -54,7 +54,7 @@ export class MyStack extends Stack {
       serverAccessLogsBucket: loggingBucket,
       serverAccessLogsPrefix: 'access-logs/',
     });
-
+    
     /*-------------------------------
      * Set up Dynamo DB table
      -------------------------------*/
