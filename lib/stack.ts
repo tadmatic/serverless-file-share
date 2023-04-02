@@ -1,7 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Duration, RemovalPolicy, Stack, StackProps, aws_lambda_nodejs } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as athena from 'aws-cdk-lib/aws-athena';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as glue from 'aws-cdk-lib/aws-glue';
@@ -13,8 +12,11 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { LambdaInvoke } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
 
-// get application name from package.json
+import { AthenaView } from './constructs/AthenaView';
+import { GlueS3AccessLogTable } from './constructs/GlueS3AccessLogTable';
 import * as packageJson from '../package.json';
+
+// get application name from package.json
 const APPLICATION_NAME = packageJson.name;
 
 // include random bytes in domain name to ensure globally unique domain prefix is used
@@ -43,7 +45,7 @@ export class MyStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY, // TODO: change to retain
     });
- 
+
     // Create an S3 bucket to store the files to share/download
     const bucket = new s3.Bucket(this, 'DownloadBucket', {
       versioned: true,
@@ -407,128 +409,43 @@ export class MyStack extends Stack {
       databaseInput: {
         name: glueDbName,
         locationUri: `s3://${analyticsBucket.bucketName}`,
-        description: 'Glue database to enable Athena queries',
+        description: 'Glue data catalog to enable Athena queries',
       },
     });
 
     // Create a new Glue table for storing S3 access logs
-    new glue.CfnTable(this, 'AccessLogsGlueTable', {
-      catalogId: cdk.Aws.ACCOUNT_ID,
+    new GlueS3AccessLogTable(this, 'AccessLogsGlueTable', {
+      accountId: cdk.Aws.ACCOUNT_ID,
       databaseName: glueDb.ref,
-      tableInput: {
-        name: 'access_logs',
-        storageDescriptor: {
-          columns: [
-            { name: 'bucket_owner', type: 'string' },
-            { name: 'bucket', type: 'string' },
-            { name: 'request_datetime', type: 'string' },
-            { name: 'remote_ip', type: 'string' },
-            { name: 'requester', type: 'string' },
-            { name: 'request_id', type: 'string' },
-            { name: 'operation', type: 'string' },
-            { name: 'key', type: 'string' },
-            { name: 'request_uri', type: 'string' },
-            { name: 'http_status', type: 'int' },
-            { name: 'error_code', type: 'string' },
-            { name: 'bytes_sent', type: 'bigint' },
-            { name: 'object_size', type: 'bigint' },
-            { name: 'total_time', type: 'int' },
-            { name: 'turn_around_time', type: 'int' },
-            { name: 'referrer', type: 'string' },
-            { name: 'user_agent', type: 'string' },
-            { name: 'version_id', type: 'string' },
-            { name: 'host_id', type: 'string' },
-            { name: 'sigv', type: 'string' },
-            { name: 'cipher_suite', type: 'string' },
-            { name: 'auth_type', type: 'string' },
-            { name: 'endpoint', type: 'string' },
-            { name: 'tlsversion', type: 'string' },
-          ],
-          location: `s3://${loggingBucket.bucketName}/access-logs`,
-          inputFormat: 'org.apache.hadoop.mapred.TextInputFormat',
-          outputFormat: 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat',
-          serdeInfo: {
-            serializationLibrary: 'org.apache.hadoop.hive.serde2.RegexSerDe',
-            parameters: {
-              'input.regex':
-                '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\\"[^"]*\\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\\"[^"]*\\"|-) ([^ ]*)(?: ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*))?.*$',
-            },
-          },
-        },
-      },
+      tableName: 's3_access_logs',
+      s3Location: `s3://${loggingBucket.bucketName}/access-logs`,
     });
 
-    // Create SQL query for downlaod report view
-    const query = `
-      SELECT
-          request_datetime,
-          REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-user-id=([^& ]+)', 1) as user_id,
-          key as filepath,
-          bytes_sent
-      FROM
-          access_logs
-      WHERE
-          operation = 'REST.GET.OBJECT'
-          AND http_status = 200
-      ORDER BY
-          request_datetime
-    `;
-
-    // Helper function to create 'presto' JSON model
-    const createPrestoView = (query: string): string => {
-      return `/* Presto View: ${new Buffer(query).toString('base64')} */`;
-    };
-
-    // Presto JSON model (note: use varchar instead of string)
-    const prestoObject = {
-      originalSql: query,
-      catalog: 'awsdatactalog',
-      schema: glueDbName,
+    // Create Athena view using SQL query
+    new AthenaView(this, 'AthenaDownloadReportView', {
+      viewName: 'download_view',
+      databaseName: glueDbName,
+      ownerAccountId: this.account,
       columns: [
-        { name: 'request_datetime', type: 'varchar' },
-        { name: 'user_id', type: 'varchar' },
-        { name: 'filepath', type: 'varchar' },
+        { name: 'request_datetime', type: 'string' },
+        { name: 'user_id', type: 'string' },
+        { name: 'filepath', type: 'string' },
         { name: 'bytes_sent', type: 'bigint' },
       ],
-      owner: this.account,
-      runAsInvoker: false,
-      properties: {},
-    };
-
-    // Create view as a Glue Table with table type = 'VIRTUAL VIEW'
-    new glue.CfnTable(this, 'AccessLogsDownloadReportView', {
-      catalogId: cdk.Aws.ACCOUNT_ID,
-      databaseName: glueDb.ref,
-      tableInput: {
-        name: 'download_report',
-        tableType: 'VIRTUAL_VIEW',
-        viewExpandedText: '/* Presto View */',
-        viewOriginalText: createPrestoView(JSON.stringify(prestoObject)),
-        parameters: {
-          presto_view: 'true',
-          comment: 'Presto View',
-        },
-        partitionKeys: [],
-        storageDescriptor: {
-          columns: [
-            { name: 'request_datetime', type: 'string' },
-            { name: 'user_id', type: 'string' },
-            { name: 'filepath', type: 'string' },
-            { name: 'bytes_sent', type: 'bigint' },
-          ],
-          serdeInfo: {},
-          location: '',
-        },
-      },
-    });
-
-    // Create Athena saved query
-    new athena.CfnNamedQuery(this, 'AccessLogDownloadReportSavedQuery', {
-      database: glueDbName,
-      workGroup: 'primary',
-      name: 'download_report',
-      description: 'Download Report',
-      queryString: query,
+      sqlQuery: `
+        SELECT
+            request_datetime,
+            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-user-id=([^& ]+)', 1) as user_id,
+            key as filepath,
+            bytes_sent
+        FROM
+          s3_access_logs
+        WHERE
+            operation = 'REST.GET.OBJECT'
+            AND http_status = 200
+        ORDER BY
+            request_datetime
+      `,
     });
 
     // Output variables
