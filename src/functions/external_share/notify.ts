@@ -2,17 +2,14 @@ import { injectLambdaContext } from '@aws-lambda-powertools/logger';
 import { logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
-import { APIGatewayProxyResult } from 'aws-lambda';
 
 import { logger, metrics, tracer } from '../../utilities/observability';
-import { DownloadEvent } from '../../utilities/types';
+import { ExternalShareEvent } from '../../utilities/types';
 
-const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResult> => {
-  return {
-    statusCode: event.responseContext.statusCode,
-    headers: event.responseContext.headers,
-    body: event.responseContext.body ?? '',
-  };
+const lambdaHandler = async (event: ExternalShareEvent): Promise<ExternalShareEvent> => {
+  //TODO check if user selected a notification and send email
+
+  return event;
 };
 
 export const handler = middy(lambdaHandler)

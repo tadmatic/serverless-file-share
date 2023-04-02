@@ -5,9 +5,9 @@ import middy from '@middy/core';
 import { APIGatewayProxyResult } from 'aws-lambda';
 
 import { logger, metrics, tracer } from '../../utilities/observability';
-import { DownloadEvent } from '../../utilities/types';
+import { ExternalShareEvent } from '../../utilities/types';
 
-const lambdaHandler = async (event: DownloadEvent): Promise<APIGatewayProxyResult> => {
+const lambdaHandler = async (event: ExternalShareEvent): Promise<APIGatewayProxyResult> => {
   return {
     statusCode: event.responseContext.statusCode,
     headers: event.responseContext.headers,

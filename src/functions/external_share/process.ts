@@ -5,20 +5,10 @@ import middy from '@middy/core';
 
 import { generateAuthUrl, getRedirectUri } from '../../utilities/auth';
 import { logger, metrics, tracer } from '../../utilities/observability';
-import { DownloadEvent } from '../../utilities/types';
+import { ExternalShareEvent } from '../../utilities/types';
 
-const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
-  const { filepath, userId } = event;
-
-  // validate file path
-  if (!filepath) {
-    logger.error(`File path parameter is missing: ${event.filepath}`);
-
-    event.responseContext = {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'File path parameter is missing' }),
-    };
-  }
+const lambdaHandler = async (event: ExternalShareEvent): Promise<ExternalShareEvent> => {
+  const { userId } = event;
 
   // If no valid user found, redirect to login page
   if (!userId || userId === '') {
@@ -26,7 +16,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
     const redirectUri = getRedirectUri(event);
 
     // Generate auth request, pass filepath as state paramater in oAuth request
-    const { authUrl, codeVerifier } = generateAuthUrl(redirectUri, filepath);
+    const { authUrl, codeVerifier } = generateAuthUrl(redirectUri);
 
     // Store the PKCE code verifier in a cookie and redirect to auth url
     event.responseContext = {
@@ -35,6 +25,7 @@ const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
       headers: {
         'Set-Cookie': `code_verifier=${codeVerifier}; Path=/; Secure; HttpOnly; SameSite=Lax`,
         Location: authUrl,
+        'X-Amzn-Trace-Id': event.requestContext.traceId,
       },
     };
   }

@@ -3,9 +3,9 @@ import { logMetrics } from '@aws-lambda-powertools/metrics';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer';
 import middy from '@middy/core';
 
-import { DownloadEvent } from './types';
 import { isAllowedToDownload } from '../../utilities/dynamodb';
 import { logger, metrics, tracer } from '../../utilities/observability';
+import { DownloadEvent } from '../../utilities/types';
 
 const lambdaHandler = async (event: DownloadEvent): Promise<DownloadEvent> => {
   const { filepath, userId } = event;

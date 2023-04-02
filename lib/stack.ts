@@ -191,6 +191,7 @@ export class MyStack extends Stack {
       ...functionSettings,
     });
     bucket.grantRead(generateDownloadURLFunction);
+    table.grantReadWriteData(generateDownloadURLFunction);
 
     const recordDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordDownloadFunction', {
       entry: './src/functions/download/record.ts',
@@ -200,6 +201,29 @@ export class MyStack extends Stack {
 
     const endDownloadFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endDownloadFunction', {
       entry: './src/functions/download/complete.ts',
+      ...functionSettings,
+    });
+
+    // Create a Lambda function to handle external share requests
+    const startShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'startShareFunction', {
+      entry: './src/functions/external_share/process.ts',
+      ...functionSettings,
+    });
+    const generateShareURLFunction = new aws_lambda_nodejs.NodejsFunction(this, 'generateShareURLFunction', {
+      entry: './src/functions/external_share/url.ts',
+      ...functionSettings,
+    });
+    const recordShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'recordShareFunction', {
+      entry: './src/functions/external_share/record.ts',
+      ...functionSettings,
+    });
+    table.grantWriteData(recordShareFunction);
+    const notifyShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'notifyShareFunction', {
+      entry: './src/functions/external_share/notify.ts',
+      ...functionSettings,
+    });
+    const endShareFunction = new aws_lambda_nodejs.NodejsFunction(this, 'endShareFunction', {
+      entry: './src/functions/external_share/complete.ts',
       ...functionSettings,
     });
 
@@ -302,6 +326,7 @@ export class MyStack extends Stack {
         filepath: sfn.JsonPath.stringAt('$.path.filepath'),
         requestContext: {
           requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+          traceId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
           domainName: sfn.JsonPath.stringAt('$.header.Host'),
         },
         responseContext: {
@@ -350,6 +375,61 @@ export class MyStack extends Stack {
     });
 
     /*-------------------------------
+     * Set up External Share step function
+     -------------------------------*/
+    const startShareInvocation = new LambdaInvoke(this, 'Validate Share', {
+      lambdaFunction: startShareFunction,
+      payloadResponseOnly: true,
+      payload: sfn.TaskInput.fromObject({
+        id: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+        userId: sfn.JsonPath.stringAt('$.authorizer.principalId'),
+        presignedUrl: sfn.JsonPath.stringAt('$.querystring.url'),
+        shareUserId: sfn.JsonPath.stringAt('$.querystring.email'),
+        maxNumberOfDownloads: sfn.JsonPath.stringAt('$.querystring.downloads'),
+        notifyByEmail: sfn.JsonPath.stringAt('$.querystring.notify'),
+        requestContext: {
+          requestId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+          traceId: sfn.JsonPath.stringAt('$.header.X-Amzn-Trace-Id'),
+          domainName: sfn.JsonPath.stringAt('$.header.Host'),
+        },
+        responseContext: {
+          statusCode: 200, //set default response, need to find a cleaner approach
+        },
+      }),
+    });
+    const isShareValid = new sfn.Choice(this, 'Is Share Valid?');
+    const generateShareURLInvocation = new LambdaInvoke(this, 'Share URL', {
+      lambdaFunction: generateShareURLFunction,
+      outputPath: '$.Payload',
+    });
+    const recordShareInvocation = new LambdaInvoke(this, 'Record Share', {
+      lambdaFunction: recordShareFunction,
+      outputPath: '$.Payload',
+    });
+    const notifyShareInvocation = new LambdaInvoke(this, 'Notify Share', {
+      lambdaFunction: notifyShareFunction,
+      outputPath: '$.Payload',
+    });
+    const endShareInvocation = new LambdaInvoke(this, 'Complete Share', {
+      lambdaFunction: endShareFunction,
+      outputPath: '$.Payload',
+    });
+
+    const shareChain = sfn.Chain.start(startShareInvocation).next(
+      isShareValid
+        .when(
+          sfn.Condition.numberEquals('$.responseContext.statusCode', 200),
+          generateShareURLInvocation.next(recordShareInvocation).next(notifyShareInvocation).next(endShareInvocation),
+        )
+        .otherwise(endShareInvocation),
+    );
+
+    const shareStateMachine = new sfn.StateMachine(this, 'ShareStateMachine', {
+      definition: shareChain,
+      stateMachineType: sfn.StateMachineType.EXPRESS,
+    });
+
+    /*-------------------------------
      * Set up S3 event notifications to trigger Lambda when new file is uploaded
      -------------------------------*/
     const s3EventSource = new lambdaEventSources.S3EventSource(bucket, {
@@ -362,6 +442,48 @@ export class MyStack extends Stack {
      * Set up API Gateway routes
      -------------------------------*/
 
+    // Define web integration response mapping templates
+    const webIntegrationResponse: apigateway.IntegrationResponse[] = [
+      {
+        statusCode: '400',
+        selectionPattern: '4\\d{2}',
+        responseTemplates: {
+          'application/json': '{"error": "Bad request!"}',
+        },
+      },
+      {
+        statusCode: '500',
+        selectionPattern: '5\\d{2}',
+        responseTemplates: {
+          'application/json': '"error": $input.path(\'$.error\')',
+        },
+      },
+      {
+        statusCode: '200',
+        selectionPattern: '2\\d{2}',
+        responseTemplates: {
+          'application/json':
+            ' \
+          #set($root = $util.parseJson($input.path(\'$.output\')))\
+          #if($input.path(\'$.status\').toString().equals("FAILED"))\
+          #set($context.responseOverride.status = 500)\
+          {\
+          "error": "$input.path(\'$.error\')",\
+          "cause": "$input.path(\'$.cause\')"\
+          }\
+          #elseif($root.statusCode.toString().equals("302") || $root.statusCode.toString().equals("307"))\
+          #set($context.responseOverride.status = $root.statusCode)\
+          #set($context.responseOverride.header.content-type = "text/html")\
+          #set($context.responseOverride.header.Set-Cookie = "$root.headers.Set-Cookie")\
+          #set($context.responseOverride.header.Location = "$root.headers.Location")\
+          #else\
+          #set($context.responseOverride.status = $root.statusCode)\
+          $input.path(\'$.output\')\
+          #end',
+        },
+      },
+    ];
+
     // Define the "/download/{filepath+}" route
     api.root
       .addResource('download')
@@ -372,52 +494,28 @@ export class MyStack extends Stack {
           headers: true,
           authorizer: true,
           passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_TEMPLATES,
-          integrationResponses: [
-            {
-              statusCode: '400',
-              selectionPattern: '4\\d{2}',
-              responseTemplates: {
-                'application/json': '{"error": "Bad request!"}',
-              },
-            },
-            {
-              statusCode: '500',
-              selectionPattern: '5\\d{2}',
-              responseTemplates: {
-                'application/json': '"error": $input.path(\'$.error\')',
-              },
-            },
-            {
-              statusCode: '200',
-              selectionPattern: '2\\d{2}',
-              responseTemplates: {
-                'application/json':
-                  ' \
-                #set($root = $util.parseJson($input.path(\'$.output\')))\
-                #if($input.path(\'$.status\').toString().equals("FAILED"))\
-                #set($context.responseOverride.status = 500)\
-                {\
-                "error": "$input.path(\'$.error\')",\
-                "cause": "$input.path(\'$.cause\')"\
-                }\
-                #elseif($root.statusCode.toString().equals("302") || $root.statusCode.toString().equals("307"))\
-                #set($context.responseOverride.status = $root.statusCode)\
-                #set($context.responseOverride.header.content-type = "text/html")\
-                #set($context.responseOverride.header.Set-Cookie = "$root.headers.Set-Cookie")\
-                #set($context.responseOverride.header.Location = "$root.headers.Location")\
-                #else\
-                #set($context.responseOverride.status = $root.statusCode)\
-                $input.path(\'$.output\')\
-                #end',
-              },
-            },
-          ],
+          integrationResponses: webIntegrationResponse,
         }),
         {
           authorizationType: apigateway.AuthorizationType.CUSTOM,
           authorizer,
         },
       );
+
+    // Define the "/extshare/" route
+    api.root.addResource('extshare').addMethod(
+      'GET',
+      apigateway.StepFunctionsIntegration.startExecution(shareStateMachine, {
+        headers: true,
+        authorizer: true,
+        passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_TEMPLATES,
+        integrationResponses: webIntegrationResponse,
+      }),
+      {
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer,
+      },
+    );
 
     // Define the /upload route
     api.root
