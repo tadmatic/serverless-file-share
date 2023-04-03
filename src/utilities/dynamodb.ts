@@ -138,7 +138,7 @@ export const isAllowedToDownload = async ({ filepath, userId }: CreateFileReques
 };
 
 // retrieve share request record
-export const getShareExternalUrl = async ({ filepath, userId }: CreateFileRequest): Promise<string | undefined> => {
+export const getShareRecord = async ({ filepath, userId }: CreateFileRequest): Promise<AttributeMap | undefined> => {
   const params = {
     TableName: TABLE_NAME,
     KeyConditionExpression: '#pk = :filepath and begins_with(#sk, :userId)',
@@ -161,12 +161,5 @@ export const getShareExternalUrl = async ({ filepath, userId }: CreateFileReques
   // TODO move to service/repo application architecture pattern
   const record = `${userId}#${RECORD_TYPE_SHARE_PREFIX}`;
 
-  const item = result.Items?.find((r) => r.record === record);
-
-  if (item && item.type === 'external') {
-    console.log(item.presignedUrl);
-    return item.presignedUrl;
-  }
-
-  return undefined;
+  return result.Items?.find((r) => r.record === record) ?? undefined;
 };
