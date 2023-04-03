@@ -1,11 +1,63 @@
-## Serverless File Share Solution on AWS
+## AWS Serverless File Share Solution
+
+### Background
+
+[Amazon S3](https://aws.amazon.com/s3/) is a popular cloud storage service that many AWS customers use to store significant amounts of data.
+
+AWS customers often want a way to securely share files with users who are non-AWS customers. One solution is to share [S3 Presigned URLs](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html), however there are 3 key challenges:
+1. Security - it is possible for users to share presigned urls with other users
+2. Cost - there is no way to control data transfer costs as there is no way to limit downloads other than through expiry 
+3. Monitoring - there is no mechanism to identify and track who is accessing the download url
+
+Customers are looking for a simple way to share their data securely.
+
+---
+
+### High Level Solution Approach
+
+The solution covers 2 scenarios
+
+#### Scenario 1: Non AWS user uploading and sharing files with another non AWS user
+
+<img src="docs/img/high_level_flow_1.png" width="701" height="285" />
+
+For this flow, both file owner and recipient are required to sign up in the Serverless File Application using Cognito.
+
+1. User uploads a file using the Serverless File Share Application.
+**Note:** As a pre-requisite the user is required to login in using their email address via Cognito.
+
+2. The file is stored in a bucket managed by the Serverless File Application.
+
+3. The application sends a notification to the recipient which includes a download link
+
+4. The recipient accesses the download link. The link will authenticate the user using Cognito first and then check if the recipient is allowed to download the file before serving the file. 
+
+#### Scenario 2: AWS user sharing existing files with a non AWS user
+
+<img src="docs/img/high_level_flow_2.png" width="676" height="245" />
+
+For this flow, the file owner can be someone logged into their AWS account. Only the recipient is required to sign up to the Serverless File Application using Cognito.
+
+1. File owner generates a presigned URL using S3 (e.g. via console, CLI or custom application)
+
+2. File server calls an API in the Serverless File Share Application and passes details of the recipient who should receive the file.
+
+3. The application sends a notification to the recipient which includes a download link
+
+4. The recipient accesses the download link. The link will authenticate the user using Cognito first and then check if the recipient is allowed to download the file before serving the file. 
+
+---
+
+### Architecture
+
+TODO
 
 ---
 
 ### Before you get started
 **Step 1: Install dependencies**
 ```
-yarn # or npm install
+npm install
 ```
 
 **Step 2: Setup AWS profile (optional)** 
@@ -56,6 +108,8 @@ yarn deploy:prod
 ---
 
 ### API Specification
+
+TODO: Update API spec
 
 **```/download/{filepath}```**
 
