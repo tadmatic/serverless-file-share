@@ -591,7 +591,8 @@ export class MyStack extends Stack {
         FROM
           s3_access_logs
         WHERE
-            operation = 'REST.GET.OBJECT'
+            REGEXP_EXTRACT(URL_DECODE(request_uri), 'x-amz-meta-user-id=([^& ]+)', 1) != ''
+            AND operation = 'REST.GET.OBJECT'
             AND http_status = 200
         ORDER BY
             request_datetime
