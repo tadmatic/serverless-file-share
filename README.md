@@ -52,7 +52,6 @@ For this flow, the file owner can be someone logged into their AWS account. Only
 
 <img src="docs/img/architecture_diagram.png" />
 
-
 ---
 
 ### Before you get started
